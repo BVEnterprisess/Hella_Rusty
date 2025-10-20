@@ -96,7 +96,7 @@ networks:
 
 **Before**:
 ```json
-"GITHUB_PERSONAL_ACCESS_TOKEN": "github_pat_[REDACTED]_Mc4ARCIp8ct1j7nUEQq49L97o5AN4FlqpmE8joJ1wFlYLFYY6RLldj8nFxi"
+"GITHUB_PERSONAL_ACCESS_TOKEN": "[REDACTED_GITHUB_TOKEN]"
 ```
 
 **After**:

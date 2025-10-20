@@ -1,0 +1,55 @@
+FROM nvidia/cuda:12.2-devel-ubuntu22.04 AS builder
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+
+# Build the application
+RUN cargo build --release
+
+# Runtime stage
+FROM nvidia/cuda:12.2-runtime-ubuntu22.04
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libssl-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user
+RUN useradd -r -s /bin/false appuser
+
+# Copy binary
+COPY --from=builder /app/target/release/agent /usr/local/bin/agent
+
+# Copy model files (if needed at build time)
+COPY --chown=appuser models/ /models/
+
+# Create directories for runtime artifacts
+RUN mkdir -p /app/artifacts /app/logs && chown -R appuser:appuser /app
+
+USER appuser
+WORKDIR /app
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+EXPOSE 8080
+
+# Set environment variables for CUDA
+ENV CUDA_VISIBLE_DEVICES=0
+ENV CUDA_MPS_PIPE_DIRECTORY=/tmp
+ENV CUDA_MPS_LOG_DIRECTORY=/tmp
+
+CMD ["/usr/local/bin/agent"]

@@ -1,0 +1,215 @@
+name: Project Chimera CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Security and quality checks
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # Rust tests and build
+  test-and-build:
+    name: Test & Build
+    runs-on: ubuntu-latest
+    needs: security-scan
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache Cargo registry
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Check code formatting
+      run: cargo fmt --all -- --check
+
+    - name: Run clippy
+      run: cargo clippy -- -D warnings
+
+    - name: Build project
+      run: cargo build --verbose
+
+    - name: Run tests
+      run: cargo test --verbose
+
+  # Playwright sandbox testing
+  sandbox-tests:
+    name: Sandbox Tests
+    runs-on: ubuntu-latest
+    needs: test-and-build
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Install Playwright
+      run: |
+        cd tests/sandbox
+        npm install
+
+    - name: Install Playwright browsers
+      run: |
+        cd tests/sandbox
+        npx playwright install --with-deps
+
+    - name: Run sandbox tests
+      run: |
+        cd tests/sandbox
+        npx playwright test --grep "sandbox"
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: playwright-report
+        path: tests/sandbox/playwright-report/
+
+  # Docker build and push
+  docker-build:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+    needs: [test-and-build, sandbox-tests]
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: project-chimera/agent
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: docker/Dockerfile.agent
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # Deploy to staging
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Deploy to staging k8s
+      run: |
+        kubectl config use-context staging
+        kubectl apply -f k8s/agent-deployment.yaml
+        kubectl rollout status deployment/chimera-agent
+
+  # Integration tests on staging
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Wait for deployment
+      run: |
+        kubectl config use-context staging
+        kubectl wait --for=condition=available --timeout=300s deployment/chimera-agent
+
+    - name: Run integration tests
+      run: |
+        # Test agent endpoints
+        curl -f http://staging.chimera.local/health || exit 1
+        curl -f -X POST http://staging.chimera.local/predict \
+          -H "Content-Type: application/json" \
+          -d '{"job_id":"test","input":{"text":"hello"}}' || exit 1
+
+  # Canary deployment to production
+  canary-deploy:
+    name: Canary Deploy to Production
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Deploy canary (10%)
+      run: |
+        kubectl config use-context production
+        # Deploy with canary annotation
+        kubectl apply -f k8s/canary-deployment.yaml
+        kubectl set image deployment/chimera-agent agent=project-chimera/agent:latest
+
+    - name: Monitor canary metrics
+      run: |
+        # Wait and check metrics for 15 minutes
+        sleep 900
+        # Check if error rate is acceptable
+        curl -f https://prometheus.chimera.local/api/v1/query?query=rate(agent_requests_total{status="error"}[5m])/rate(agent_requests_total[5m]) < 0.05
+
+    - name: Promote to full deployment
+      if: success()
+      run: |
+        kubectl config use-context production
+        kubectl scale deployment/chimera-agent --replicas=10
+        kubectl delete -f k8s/canary-deployment.yaml
+
+    - name: Rollback on failure
+      if: failure()
+      run: |
+        kubectl config use-context production
+        kubectl rollout undo deployment/chimera-agent

@@ -1,0 +1,81 @@
+---
+# Trivy security scanning configuration
+format: json
+output: security-report.json
+
+# Vulnerability scanning
+vulnerability:
+  type: os,library
+  ignore-unfixed: false
+  severity:
+    - CRITICAL
+    - HIGH
+    - MEDIUM
+    - LOW
+
+# Misconfiguration scanning
+misconfiguration:
+  type: kubernetes,terraform,docker
+  severity:
+    - CRITICAL
+    - HIGH
+    - MEDIUM
+    - LOW
+
+# Secret scanning
+secret:
+  enable: true
+
+# License scanning
+license:
+  enable: true
+  allowlist:
+    - MIT
+    - Apache-2.0
+    - BSD-2-Clause
+    - BSD-3-Clause
+    - ISC
+
+# Skip certain vulnerabilities
+skip-update: false
+skip-files:
+  - "*.md"
+  - "docs/**"
+  - "README*"
+
+# Exit codes
+exit-code: 1
+exit-on-eol: 1
+
+# Report configuration
+report:
+  format: all
+  output: trivy-report.html
+  template: "@html.tpl"
+
+# Cache configuration
+cache:
+  dir: .trivy-cache
+  ttl: 24h
+
+# GitHub integration
+github:
+  token: ${GITHUB_TOKEN}
+  repository:
+    owner: BVEnterprisess
+    name: Project-Chimera
+  pull-request:
+    title: "Security Scan Results"
+    body: |
+      ## 🔍 Security Scan Results
+
+      This PR introduces the following security findings:
+
+      {{ range .Results }}
+      ### {{ .Target }}
+      - **Vulnerabilities**: {{ len .Vulnerabilities }}
+      - **Misconfigurations**: {{ len .Misconfigurations }}
+      - **Secrets**: {{ len .Secrets }}
+      {{ end }}
+
+      Please review and address any HIGH or CRITICAL findings before merging.

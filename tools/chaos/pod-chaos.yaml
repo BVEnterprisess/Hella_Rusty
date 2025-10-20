@@ -1,0 +1,99 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: agent-pod-kill
+  namespace: default
+spec:
+  selector:
+    labelSelectors:
+      app: agent-service
+  mode: one
+  action: pod-kill
+  duration: "30s"
+  scheduler:
+    cron: "@every 2m"
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: agent-container-kill
+  namespace: default
+spec:
+  selector:
+    labelSelectors:
+      app: agent-service
+  mode: one
+  action: container-kill
+  duration: "30s"
+  scheduler:
+    cron: "@every 3m"
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: agent-network-delay
+  namespace: default
+spec:
+  selector:
+    labelSelectors:
+      app: agent-service
+  mode: one
+  action: delay
+  duration: "60s"
+  delay:
+    latency: "100ms"
+  scheduler:
+    cron: "@every 5m"
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: agent-network-loss
+  namespace: default
+spec:
+  selector:
+    labelSelectors:
+      app: agent-service
+  mode: one
+  action: loss
+  duration: "30s"
+  loss:
+    loss: "10"
+  scheduler:
+    cron: "@every 10m"
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: agent-cpu-stress
+  namespace: default
+spec:
+  selector:
+    labelSelectors:
+      app: agent-service
+  mode: one
+  stressors:
+    cpu:
+      workers: 2
+      load: 80
+  duration: "60s"
+  scheduler:
+    cron: "@every 15m"
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: agent-memory-stress
+  namespace: default
+spec:
+  selector:
+    labelSelectors:
+      app: agent-service
+  mode: one
+  stressors:
+    memory:
+      workers: 1
+      size: "256MB"
+  duration: "60s"
+  scheduler:
+    cron: "@every 20m"

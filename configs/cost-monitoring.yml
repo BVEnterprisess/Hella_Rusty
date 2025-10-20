@@ -1,0 +1,167 @@
+# Cloud cost monitoring configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cost-monitoring-config
+  namespace: monitoring
+data:
+  prometheus-cost.yml: |
+    global:
+      scrape_interval: 300s
+      evaluation_interval: 300s
+
+    rule_files:
+      - "cost_rules.yml"
+
+    scrape_configs:
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+        - role: node
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+        - role: pod
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
+
+      - job_name: 'aws-billing'
+        static_configs:
+          - targets: ['localhost:9090']
+        scrape_interval: 3600s
+        metrics_path: /aws-billing
+
+  cost_rules.yml: |
+    groups:
+      - name: cost_alerts
+        rules:
+        - alert: HighDailyCost
+          expr: daily_cost_usd > 50
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Daily cost threshold exceeded"
+            description: "Daily cost is ${{ $value }} USD, exceeding $50 threshold"
+
+        - alert: HighHourlyCost
+          expr: hourly_cost_usd > 10
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Hourly cost spike detected"
+            description: "Hourly cost is ${{ $value }} USD, which is unusually high"
+
+        - alert: GPUCostSpike
+          expr: gpu_hourly_cost_usd > 5
+          for: 15m
+          labels:
+            severity: info
+          annotations:
+            summary: "High GPU usage cost"
+            description: "GPU costs are ${{ $value }}/hour, consider optimization"
+
+      - name: cost_optimization
+        rules:
+        - record: daily_cost_usd
+          expr: sum(increase(cost_total_usd[24h])) by (namespace, service)
+
+        - record: hourly_cost_usd
+          expr: sum(rate(cost_total_usd[1h])) by (namespace, service) * 3600
+
+        - record: gpu_hourly_cost_usd
+          expr: sum(rate(gpu_cost_usd[1h])) by (namespace) * 3600
+
+  grafana-dashboards.json: |
+    {
+      "dashboard": {
+        "title": "Cloud Cost Monitoring",
+        "tags": ["cost", "monitoring"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Daily Cost by Service",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "daily_cost_usd",
+                "legendFormat": "{{ service }}"
+              }
+            ]
+          },
+          {
+            "title": "Hourly Cost Trend",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "hourly_cost_usd",
+                "legendFormat": "{{ namespace }}"
+              }
+            ]
+          },
+          {
+            "title": "GPU Cost Analysis",
+            "type": "bargauge",
+            "targets": [
+              {
+                "expr": "gpu_hourly_cost_usd",
+                "legendFormat": "{{ namespace }}"
+              }
+            ]
+          }
+        ],
+        "time": {
+          "from": "now-7d",
+          "to": "now"
+        },
+        "refresh": "5m"
+      }
+    }
+
+  cost-optimization-policies.json: |
+    {
+      "policies": [
+        {
+          "name": "gpu-optimization",
+          "description": "Optimize GPU usage for AI workloads",
+          "conditions": [
+            {
+              "metric": "gpu_utilization_percent",
+              "threshold": 30,
+              "duration": "1h",
+              "action": "scale_down_gpu_nodes"
+            }
+          ]
+        },
+        {
+          "name": "memory-optimization",
+          "description": "Right-size memory allocations",
+          "conditions": [
+            {
+              "metric": "memory_utilization_percent",
+              "threshold": 50,
+              "duration": "2h",
+              "action": "recommend_memory_optimization"
+            }
+          ]
+        },
+        {
+          "name": "idle-resource-cleanup",
+          "description": "Clean up idle resources",
+          "conditions": [
+            {
+              "metric": "cpu_utilization_percent",
+              "threshold": 10,
+              "duration": "4h",
+              "action": "terminate_idle_resources"
+            }
+          ]
+        }
+      ]
+    }

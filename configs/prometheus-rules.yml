@@ -1,0 +1,125 @@
+groups:
+  - name: agent_alerts
+    rules:
+    - alert: AgentDown
+      expr: up{job="agent-service"} == 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Agent service is down"
+        description: "Agent service {{ $labels.instance }} has been down for more than 5 minutes."
+        runbook_url: "https://docs.project-chimera.com/runbooks/agent-down"
+
+    - alert: HighAgentCPUUsage
+      expr: rate(container_cpu_usage_seconds_total{pod=~"agent-.*"}[5m]) > 0.8
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High CPU usage on agent"
+        description: "Agent {{ $labels.pod }} has high CPU usage (>80%) for more than 10 minutes."
+
+    - alert: HighAgentMemoryUsage
+      expr: container_memory_usage_bytes{pod=~"agent-.*"} / container_spec_memory_limit_bytes > 0.9
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High memory usage on agent"
+        description: "Agent {{ $labels.pod }} has high memory usage (>90%) for more than 5 minutes."
+
+    - alert: AgentResponseTimeHigh
+      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="agent-service"}[5m])) > 2
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High agent response time"
+        description: "95th percentile response time is {{ $value }}s for agent service."
+
+  - name: gpu_alerts
+    rules:
+    - alert: GPUDown
+      expr: gpu_utilization_percent == 0
+      for: 10m
+      labels:
+        severity: critical
+      annotations:
+        summary: "GPU is not responding"
+        description: "GPU on {{ $labels.instance }} has been idle for more than 10 minutes."
+
+    - alert: GPUOverheating
+      expr: gpu_temperature_celsius > 80
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "GPU temperature is high"
+        description: "GPU temperature is {{ $value }}°C on {{ $labels.instance }}."
+
+    - alert: GPUMemoryFull
+      expr: gpu_memory_used_bytes / gpu_memory_total_bytes > 0.95
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "GPU memory is almost full"
+        description: "GPU memory usage is {{ $value }}% on {{ $labels.instance }}."
+
+  - name: model_alerts
+    rules:
+    - alert: ModelTrainingFailed
+      expr: increase(model_training_failures_total[1h]) > 0
+      labels:
+        severity: critical
+      annotations:
+        summary: "Model training failed"
+        description: "{{ $value }} model training failures detected in the last hour."
+
+    - alert: ModelAccuracyDegraded
+      expr: model_accuracy < 0.8
+      for: 15m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Model accuracy degraded"
+        description: "Model accuracy dropped below 80% for more than 15 minutes."
+
+  - name: infrastructure_alerts
+    rules:
+    - alert: RedisDown
+      expr: redis_up == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Redis is down"
+        description: "Redis instance is not responding."
+
+    - alert: PostgreSDown
+      expr: pg_up == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "PostgreSQL is down"
+        description: "PostgreSQL instance is not responding."
+
+    - alert: HighDiskUsage
+      expr: disk_usage_percent > 85
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High disk usage"
+        description: "Disk usage is {{ $value }}% on {{ $labels.instance }}."
+
+    - alert: ServiceRestarting
+      expr: increase(kube_pod_container_status_restarts_total[1h]) > 5
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Service is restarting frequently"
+        description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last hour."

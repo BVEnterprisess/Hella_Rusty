@@ -1,0 +1,137 @@
+version: '3.8'
+
+services:
+  # Production Agent Service with enhanced security
+  agent-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+      target: production
+    image: project-chimera/agent:prod
+    environment:
+      - RUST_LOG=info
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql://chimera_user:${POSTGRES_PASSWORD}@postgres:5432/chimera_prod
+      - REDIS_URL=redis://redis:6379
+      - GPU_ENABLED=true
+      - MAX_AGENTS=10
+      - RATE_LIMIT_PER_MINUTE=1000
+    volumes:
+      - ./models:/app/models:ro
+      - ./artifacts:/app/artifacts
+    networks:
+      - chimera-prod
+    deploy:
+      replicas: 3
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+        limits:
+          memory: 8G
+          cpus: '2.0'
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Redis Cluster for production
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 1gb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_prod_data:/data
+      - ./configs/redis.conf:/etc/redis/redis.conf:ro
+    networks:
+      - chimera-prod
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL with replication
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=chimera_prod
+      - POSTGRES_USER=chimera_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data/pgdata
+      - ./configs/postgres.conf:/etc/postgresql/postgresql.conf:ro
+      - ./migrations:/docker-entrypoint-initdb.d
+    networks:
+      - chimera-prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chimera_user -d chimera_prod"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Exporter for monitoring
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    environment:
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    networks:
+      - chimera-prod
+    depends_on:
+      - redis
+
+  # PostgreSQL Exporter for monitoring
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    environment:
+      - DATA_SOURCE_NAME=postgresql://chimera_user:${POSTGRES_PASSWORD}@postgres:5432/chimera_prod?sslmode=disable
+    networks:
+      - chimera-prod
+    depends_on:
+      - postgres
+
+  # Load balancer
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./configs/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./configs/ssl:/etc/nginx/ssl:ro
+    networks:
+      - chimera-prod
+    depends_on:
+      - agent-service
+    restart: unless-stopped
+
+  # Log aggregation
+  fluent-bit:
+    image: fluent/fluent-bit:latest
+    volumes:
+      - ./configs/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - /var/log:/var/log:ro
+    networks:
+      - chimera-prod
+    depends_on:
+      - agent-service
+      - redis
+      - postgres
+
+networks:
+  chimera-prod:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres_prod_data:
+    driver: local
+  redis_prod_data:
+    driver: local
+  minio_data:
+    driver: local

@@ -1,0 +1,102 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Project Chimera - AI Agent Monitoring",
+    "tags": ["ai", "agents", "ml"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Agent Request Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(agent_requests_total[5m])",
+            "legendFormat": "{{agent_id}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Requests/sec"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Agent Latency (P95)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(agent_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{agent_id}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Latency (seconds)"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "GPU Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "gpu_memory_bytes / 1024 / 1024 / 1024",
+            "legendFormat": "GPU {{gpu_id}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Memory (GB)"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Agent Error Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(agent_requests_total{status=\"error\"}[5m]) / rate(agent_requests_total[5m])",
+            "legendFormat": "{{agent_id}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Error Rate",
+            "format": "percentunit"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Active Agents",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "count(agent_info)",
+            "legendFormat": ""
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Training Jobs",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "trainer_jobs_total",
+            "legendFormat": "{{status}}"
+          }
+        ]
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "30s"
+  }
+}

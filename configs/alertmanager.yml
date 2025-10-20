@@ -1,8 +1,8 @@
 global:
   smtp_smarthost: 'smtp.gmail.com:587'
-  smtp_from: 'alerts@project-chimera.com'
-  smtp_auth_username: 'your-email@gmail.com'
-  smtp_auth_password: 'your-app-password'
+  smtp_from: '${SMTP_FROM:-alerts@project-chimera.com}'
+  smtp_auth_username: '${SMTP_USERNAME:-your-email@gmail.com}'
+  smtp_auth_password: '${SMTP_PASSWORD:-your-app-password}'
 
 route:
   group_by: ['alertname']

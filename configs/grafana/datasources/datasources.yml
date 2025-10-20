@@ -17,10 +17,10 @@ datasources:
   - name: PostgreSQL
     type: postgres
     url: postgres:5432
-    database: chimera
-    user: chimera
+    database: ${POSTGRES_DB:-chimera}
+    user: ${POSTGRES_USER:-chimera}
     secureJsonData:
-      password: "chimera123"
+      password: "${POSTGRES_PASSWORD:-changeme123}"
     jsonData:
       sslmode: "disable"
       postgresVersion: 1500

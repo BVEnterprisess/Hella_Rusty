@@ -1,0 +1,81 @@
+[package]
+name = "chimera-layer4"
+version = "0.1.0"
+edition = "2021"
+description = "Layer 4 Execution Fabric - WASM Agent Runtime and Orchestration"
+authors = ["Project Chimera"]
+
+[dependencies]
+# Core async runtime - LOCKED VERSION
+tokio = { version = "1.35", features = ["full", "tracing"] }
+
+# WASM runtime with JIT compilation - LOCKED VERSION
+wasmtime = { version = "22.0", features = ["component-model", "gc", "threads"] }
+wasi-common = "22.0"
+wasmtime-wasi = "22.0"
+
+# Serialization - LOCKED VERSIONS
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.0"
+toml = "0.8"
+
+# Error handling - LOCKED VERSIONS
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging and telemetry - LOCKED VERSIONS
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Metrics and monitoring - LOCKED VERSIONS
+prometheus = { version = "0.13", features = ["process"] }
+metrics = "0.23"
+metrics-exporter-prometheus = "0.15"
+
+# Async communication - LOCKED VERSION
+async-channel = "2.0"
+futures = "0.3"
+
+# UUID generation - LOCKED VERSION
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Configuration - LOCKED VERSION
+config = "0.14"
+
+# Redis for event bus - LOCKED VERSION
+redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+
+# IPC communication - LOCKED VERSION
+interprocess = "2.0"
+
+# Time handling - LOCKED VERSION
+chrono = { version = "0.4", features = ["serde"] }
+
+# Resource monitoring - LOCKED VERSION
+procfs = "0.16"
+
+# HTTP server for metrics
+warp = { version = "0.3", features = ["tls"] }
+
+# TLS and security
+rustls = "0.23"
+
+[dev-dependencies]
+tempfile = "3.0"
+criterion = "0.5"
+
+##[[bench]]
+##name = "execution_benchmarks"
+##harness = false
+##
+##[profile.release]
+##opt-level = 3
+##lto = true
+##codegen-units = 1
+##panic = "abort"
+##
+##[profile.bench]
+##opt-level = 3
+##debug = false
+##lto = true

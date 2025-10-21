@@ -57,6 +57,7 @@ pub mod agent_template;
 pub mod executor;
 pub mod scheduler;
 pub mod metrics;
+pub mod wasm_executor;
 
 // Re-export commonly used types for convenience
 pub use types::*;
@@ -64,6 +65,7 @@ pub use agent_template::*;
 pub use executor::*;
 pub use scheduler::*;
 pub use metrics::*;
+pub use wasm_executor::*;
 
 /// Version of the Layer 4 execution fabric
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

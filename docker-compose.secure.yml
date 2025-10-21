@@ -1,7 +1,19 @@
+# Project Chimera - Strict Security Docker Compose Configuration
+#
+# This configuration provides maximum security with:
+# - NO exposed ports to external networks
+# - Internal-only networking
+# - All services isolated
+# 
+# Access Method:
+#   Use `kubectl port-forward` or `docker exec` for admin access
+#
+# Usage:
+#   docker-compose -f docker-compose.secure.yml up -d
+
 version: '3.8'
 
 services:
-  # Redis for message queuing and caching
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes --streams-max-memory 256mb --requirepass ${REDIS_PASSWORD}
@@ -15,13 +27,11 @@ services:
       timeout: 3s
       retries: 3
 
-  # Prometheus for metrics collection
   prometheus:
     image: prom/prometheus:latest
     networks:
       - monitoring
-    ports:
-      - "9090:9090"  # Exposed for external monitoring access
+    # NO PORTS EXPOSED - use kubectl port-forward for access
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
@@ -36,13 +46,11 @@ services:
       interval: 30s
       timeout: 10s
 
-  # Grafana for visualization
   grafana:
     image: grafana/grafana:latest
     networks:
       - monitoring
-    ports:
-      - "3000:3000"  # Exposed for dashboard access
+    # NO PORTS EXPOSED - use kubectl port-forward for access
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     volumes:
@@ -52,14 +60,11 @@ services:
     depends_on:
       - prometheus
 
-  # Jaeger for distributed tracing
   jaeger:
     image: jaegertracing/all-in-one:latest
     networks:
       - monitoring
-    ports:
-      - "16686:16686"  # UI port
-      - "14268:14268"  # Collector port
+    # NO PORTS EXPOSED - use kubectl port-forward for access
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     healthcheck:
@@ -67,24 +72,22 @@ services:
       interval: 30s
       timeout: 10s
 
-  # NATS for message queuing (alternative to Redis Streams)
   nats:
     image: nats:2-alpine
     networks:
       - backend
-    # Ports removed - internal only
+    # NO PORTS EXPOSED - internal only
     command: ["--jetstream", "--store_dir", "/data"]
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222"]
       interval: 30s
       timeout: 10s
 
-  # MinIO for artifact storage (S3-compatible)
   minio:
     image: minio/minio:latest
     networks:
       - backend
-    # Ports removed - internal only (use kubectl port-forward for admin)
+    # NO PORTS EXPOSED - use kubectl port-forward for admin
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
@@ -96,12 +99,11 @@ services:
       interval: 30s
       timeout: 10s
 
-  # PostgreSQL for metadata and job state
   postgres:
     image: postgres:15-alpine
     networks:
       - backend
-    # Ports removed - internal only (use kubectl port-forward for access)
+    # NO PORTS EXPOSED - use kubectl port-forward for access
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-chimera}
       - POSTGRES_USER=${POSTGRES_USER:-chimera}
@@ -113,7 +115,6 @@ services:
       interval: 10s
       timeout: 5s
 
-  # Agent service (can be scaled)
   agent:
     build:
       context: .
@@ -149,7 +150,6 @@ services:
       - minio
     restart: unless-stopped
 
-  # Training service for LoRA/QLoRA
   trainer:
     build:
       context: .
@@ -173,7 +173,6 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # Playwright sandbox for testing
   playwright:
     image: mcr.microsoft.com/playwright:v1.40.0-jammy
     networks:
@@ -197,13 +196,37 @@ volumes:
   postgres_data:
 
 networks:
-  # Backend network - internal services only
+  # Backend network - FULLY INTERNAL (no external access)
   backend:
-    name: chimera-backend
+    name: chimera-backend-secure
     driver: bridge
-    internal: false  # Set to true for strict isolation (no internet access)
+    internal: true  # Strict isolation - no internet access
   
-  # Monitoring network - for observability stack
+  # Monitoring network - FULLY INTERNAL
   monitoring:
-    name: chimera-monitoring
+    name: chimera-monitoring-secure
     driver: bridge
+    internal: true  # Strict isolation
+
+# Access Instructions:
+# 
+# To access services for administration:
+#
+# 1. Grafana Dashboard:
+#    kubectl port-forward svc/grafana 3000:3000 -n chimera
+#    http://localhost:3000
+#
+# 2. Prometheus:
+#    kubectl port-forward svc/prometheus 9090:9090 -n chimera
+#    http://localhost:9090
+#
+# 3. PostgreSQL:
+#    kubectl port-forward svc/postgres 5432:5432 -n chimera
+#    psql -h localhost -U chimera -d chimera
+#
+# 4. MinIO Console:
+#    kubectl port-forward svc/minio 9001:9001 -n chimera
+#    http://localhost:9001
+#
+# 5. Redis CLI:
+#    kubectl exec -it svc/redis -n chimera -- redis-cli -a $REDIS_PASSWORD

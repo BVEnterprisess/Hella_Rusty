@@ -4,7 +4,7 @@ services:
   # Redis for message queuing and caching
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes --streams-max-memory 256mb --requirepass ${REDIS_PASSWORD:-changeme123}
+    command: redis-server --appendonly yes --streams-max-memory 256mb --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     healthcheck:
@@ -38,7 +38,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-changeme123}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./configs/grafana/dashboards:/etc/grafana/provisioning/dashboards
@@ -78,8 +78,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-chimera}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-changeme123}
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
@@ -94,7 +94,7 @@ services:
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-chimera}
       - POSTGRES_USER=${POSTGRES_USER:-chimera}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme123}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -110,14 +110,14 @@ services:
     deploy:
       replicas: 2
     environment:
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme123}@redis:6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
       - NATS_URL=nats://nats:4222
-      - POSTGRES_URL=postgresql://${POSTGRES_USER:-chimera}:${POSTGRES_PASSWORD:-changeme123}@postgres:5432/${POSTGRES_DB:-chimera}
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-chimera}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-chimera}
       - PROMETHEUS_GATEWAY=http://prometheus:9090
       - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
       - MINIO_ENDPOINT=http://minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-chimera}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-changeme123}
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - AGENT_ID=${AGENT_ID:-intent_parser_v1}
       - MODEL_PATH=/models/gemma-3-270m-q4.safetensors
       - ADAPTER_PATH=/models/adapter.safetensors
@@ -143,9 +143,9 @@ services:
     environment:
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
       - MINIO_ENDPOINT=http://minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-chimera}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-changeme123}
-      - POSTGRES_URL=postgresql://${POSTGRES_USER:-chimera}:${POSTGRES_PASSWORD:-changeme123}@postgres:5432/${POSTGRES_DB:-chimera}
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-chimera}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-chimera}
     volumes:
       - ./training_data:/data:ro
       - ./artifacts:/artifacts
@@ -162,8 +162,8 @@ services:
     image: mcr.microsoft.com/playwright:v1.40.0-jammy
     environment:
       - MINIO_ENDPOINT=http://minio:9000
-      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-chimera}
-      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-changeme123}
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - AGENT_URL=http://agent:8080
     volumes:
       - ./tests/sandbox:/tests

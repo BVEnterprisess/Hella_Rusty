@@ -1,28 +1,109 @@
 //! WASM Executor - Secure WASM Agent Runtime with Resource Quotas
 //!
 //! This module provides a secure WASM execution environment with:
-//! - CPU time limits and timeout enforcement  
-//! - Memory quota management
-//! - Sandbox isolation (no filesystem, no network)
-//! - Resource usage tracking
+//! - CPU time limits and timeout enforcement via fuel metering
+//! - Memory quota management with hard limits
+//! - Filesystem isolation via WASI preopen directories
+//! - Network restriction (no socket imports)
+//! - Resource usage tracking and reporting
 //!
-//! Note: This is a foundational implementation. Full WASM integration
-//! requires additional Wasmtime API work for the specific version.
+//! Security model:
+//! - All WASM code runs in isolated sandboxes
+//! - Resource quotas are strictly enforced
+//! - No host system access without explicit permission
+//! - Deterministic execution for timing attack resistance
 
 use crate::types::*;
+use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
+use wasmtime::*;
+use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
-/// WASM executor with resource quota enforcement
+/// WASM executor with Wasmtime-based security enforcement
 pub struct WasmExecutor {
-    _placeholder: (),
+    engine: Engine,
+    memory_limit_bytes: usize,
+    allowed_dirs: Vec<PathBuf>,
+}
+
+/// State for WASM execution with resource limits
+struct WasmState {
+    wasi: WasiCtx,
+    limiter: ResourceLimiter,
+}
+
+impl WasmState {
+    fn new(wasi: WasiCtx, memory_limit_bytes: usize) -> Self {
+        Self {
+            wasi,
+            limiter: ResourceLimiter::new(memory_limit_bytes),
+        }
+    }
+}
+
+/// Resource limiter for memory and table quotas
+struct ResourceLimiter {
+    memory_limit_bytes: usize,
+    current_memory_bytes: usize,
+}
+
+impl ResourceLimiter {
+    fn new(memory_limit_bytes: usize) -> Self {
+        Self {
+            memory_limit_bytes,
+            current_memory_bytes: 0,
+        }
+    }
+}
+
+impl wasmtime::ResourceLimiter for ResourceLimiter {
+    fn memory_growing(&mut self, _current: usize, desired: usize, _maximum: Option<usize>) -> anyhow::Result<bool> {
+        if desired > self.memory_limit_bytes {
+            Ok(false) // Deny memory growth beyond limit
+        } else {
+            self.current_memory_bytes = desired;
+            Ok(true)
+        }
+    }
+    
+    fn table_growing(&mut self, _current: u32, desired: u32, _maximum: Option<u32>) -> anyhow::Result<bool> {
+        // Limit table size to prevent memory exhaustion
+        Ok(desired < 10_000)
+    }
 }
 
 impl WasmExecutor {
     /// Create a new WASM executor with security-hardened configuration
     pub fn new() -> Layer4Result<Self> {
+        let engine = Self::create_secure_engine()?;
+        
         Ok(Self {
-            _placeholder: (),
+            engine,
+            memory_limit_bytes: 128 * 1024 * 1024, // 128MB default
+            allowed_dirs: vec![], // No filesystem access by default
         })
+    }
+    
+    /// Create secure Wasmtime engine with restricted capabilities
+    fn create_secure_engine() -> Layer4Result<Engine> {
+        let mut config = Config::new();
+        
+        // Enable safe WASM features only
+        config.wasm_bulk_memory(true);     // Safe bulk memory operations
+        config.wasm_reference_types(true); // Safe reference types
+        config.wasm_simd(false);           // Disable SIMD (timing attacks)
+        config.wasm_threads(false);        // Disable threads (fork bombs)
+        config.wasm_multi_memory(false);   // Single memory space only
+        
+        // Resource limits
+        config.max_wasm_stack(1 * 1024 * 1024); // 1MB stack limit
+        config.consume_fuel(true);              // Enable CPU metering
+        
+        // Security and determinism
+        config.parallel_compilation(false);     // Deterministic execution
+        config.cranelift_opt_level(OptLevel::Speed);
+        
+        Ok(Engine::new(&config)?)
     }
     
     /// Execute a WASM module with resource quotas and timeout

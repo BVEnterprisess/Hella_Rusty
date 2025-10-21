@@ -1,8 +1,61 @@
 # Project Chimera - AI Agent DevOps Environment
 
-A comprehensive DevOps setup for Project Chimera, a multi-agent AI orchestration platform with single-GPU deployment, self-evolving capabilities, and enterprise-grade observability.
+> ⚠️ **PROJECT STATUS: EARLY DEVELOPMENT (15% Complete)** ⚠️  
+> **NOT PRODUCTION READY** - Most architectural layers are not yet implemented.  
+> See [MASTER_COMPLETION_PLAN.md](./docs/MASTER_COMPLETION_PLAN.md) for complete roadmap.
 
-## 🚀 Quick Start
+## 📊 Current Reality
+
+**What Actually Works**:
+- ✅ Layer 4 (Execution Fabric): 85% complete, 63 tests passing
+- ✅ DevOps infrastructure designs (configs, but not deployed)
+- ✅ Comprehensive documentation
+
+**What Does NOT Work Yet**:
+- ❌ Layers 1-3, 5-8 (87.5% of system NOT IMPLEMENTED)
+- ❌ API Gateway, Task Queue, Validation layers
+- ❌ KPI Analysis, Training, Evolution engines  
+- ❌ Model files and training pipeline
+- ❌ Database schemas
+- ❌ End-to-end integration
+- 🚨 **CRITICAL SECURITY ISSUES**: Hardcoded credentials in version control
+
+**Quick Links**:
+- [Complete Status Report](./PROJECT_STATUS.md)
+- [Master Completion Plan](./docs/MASTER_COMPLETION_PLAN.md) (1,888 hours remaining)
+- [Layer 4 Final Report](./docs/LAYER4_FINAL_REPORT.md)
+
+---
+
+## 🚧 Vision & Architecture (Planned)
+
+Project Chimera is designed as a self-evolving multi-agent AI orchestration platform with 8 architectural layers, single-GPU deployment support, and enterprise-grade observability.
+
+### Planned 8-Layer Architecture
+
+```
+Layer 1: Discovery & Ingestion (API Gateway)        ❌ NOT IMPLEMENTED
+Layer 2: Task Queue & Distribution (Redis Streams)  ❌ NOT IMPLEMENTED  
+Layer 3: Validation & Preprocessing                 ❌ NOT IMPLEMENTED
+Layer 4: Execution Fabric (WASM Agents)             ✅ 85% COMPLETE
+Layer 5: KPI Collection & Analysis                  ❌ NOT IMPLEMENTED
+Layer 6: Training Data Curation                     ❌ NOT IMPLEMENTED
+Layer 7: Evolution Engine (LoRA/QLoRA)              ❌ NOT IMPLEMENTED
+Layer 8: Resource Orchestration                     ❌ NOT IMPLEMENTED
+```
+
+**See [MASTER_COMPLETION_PLAN.md](./docs/MASTER_COMPLETION_PLAN.md) for full details.**
+
+---
+
+## ⚠️ CRITICAL: Do NOT Use Yet
+
+### The instructions below are for the PLANNED system, not current state:
+
+<details>
+<summary>Click to expand future Quick Start (NOT FUNCTIONAL YET)</summary>
+
+## 🚀 Quick Start (PLANNED - NOT WORKING)
 
 ### Prerequisites
 - NVIDIA GPU (GTX 1660 or better)
@@ -207,20 +260,56 @@ Models are stored in `/models/` with the following structure:
 └── merged_model_q4.safetensors  # Pre-merged model
 ```
 
+</details>
+
+---
+
 ## 📚 Documentation
 
-- [API Documentation](./docs/api/)
-- [Architecture Guide](./docs/architecture/)
-- [Deployment Guide](./docs/deployment/)
-- [Training Guide](./docs/training/)
+### Current Status Documentation
+- ⭐ [**MASTER COMPLETION PLAN**](./docs/MASTER_COMPLETION_PLAN.md) - Complete 14-18 week roadmap
+- ⭐ [**PROJECT STATUS**](./PROJECT_STATUS.md) - Detailed current state analysis
+- ⭐ [**Layer 4 Final Report**](./docs/LAYER4_FINAL_REPORT.md) - What's actually working
+
+### Layer 4 (Only Implemented Layer)
+- [Layer 4 README](./src/layer4/README.md) - Execution fabric documentation
+- [Layer 4 Status](./docs/LAYER4_STATUS.md) - Quick reference
+- [Layer 4 Test Results](./docs/LAYER4_TEST_RESULTS.md) - 63 tests passing
+
+### Planned Documentation (For Future Layers)
+- [API Documentation](./docs/api/) - Not yet implemented
+- [Architecture Guide](./docs/architecture/) - Design only
+- [Deployment Guide](./docs/deployment/) - Partial configs
+- [Training Guide](./docs/training/) - Not yet implemented
 
 ## 🤝 Contributing
 
-1. Create a feature branch
-2. Make your changes
-3. Add tests in the appropriate test directory
-4. Run the full test suite
-5. Submit a pull request with sandbox test results
+**Current Focus**: We are in early development implementing Layers 1-3 and 5-8.
+
+### How to Help
+
+1. **Review the [Master Completion Plan](./docs/MASTER_COMPLETION_PLAN.md)**
+2. **Pick a layer to implement** (see Phase 2-8 in the plan)
+3. **Follow the architecture specs** provided in the plan
+4. **Write comprehensive tests** (>90% coverage required)
+5. **Submit PR with:**
+   - Implementation code
+   - Test suite
+   - Documentation updates
+   - Integration test results
+
+### Development Setup (Layer 4 Only)
+
+```bash
+# Currently only Layer 4 can be tested
+cd src/layer4
+
+# Run tests (WSL required for Windows)
+wsl ~/.cargo/bin/cargo test
+
+# Run benchmarks
+wsl ~/.cargo/bin/cargo bench
+```
 
 ## 📝 License
 
@@ -235,4 +324,26 @@ For support and questions:
 
 ---
 
-**Built with ❤️ for the future of AI orchestration**
+## 🎯 Project Timeline
+
+**Started**: January 2025  
+**Current Status**: 15% Complete (Layer 4: 85% complete, all other layers: 0%)  
+**Estimated Completion**: 14-18 weeks with proper team (3.5 FTE)  
+**Total Effort**: 1,888 engineering hours remaining  
+
+### Major Milestones
+
+- [x] **Week 0**: Layer 4 implementation and testing (COMPLETE)
+- [ ] **Week 1**: Emergency security fixes (NEXT)
+- [ ] **Weeks 2-7**: Implement Layers 1-3 (API, Queue, Validation)
+- [ ] **Weeks 8-14**: Implement Layers 5-8 (Analytics, Training, Evolution, Orchestration)
+- [ ] **Weeks 15-16**: Integration testing and infrastructure
+- [ ] **Weeks 17-18**: Production deployment
+
+**See [MASTER_COMPLETION_PLAN.md](./docs/MASTER_COMPLETION_PLAN.md) for detailed breakdown.**
+
+---
+
+**Project Status**: 🚧 **UNDER ACTIVE DEVELOPMENT** 🚧  
+**Last Updated**: October 21, 2025  
+**Next Update**: After Phase 0 (Security Fixes) completion

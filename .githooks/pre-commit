@@ -1,0 +1,103 @@
+#!/bin/bash
+# Project Chimera - Pre-commit Hook
+# Prevents accidental commit of secrets and credentials
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
+echo "🔒 Running security checks..."
+
+# Check for .env files
+if git diff --cached --name-only | grep -q "^\.env$"; then
+    echo -e "${RED}❌ ERROR: Attempting to commit .env file!${NC}"
+    echo -e "${YELLOW}The .env file contains secrets and should NEVER be committed.${NC}"
+    echo ""
+    echo "To fix:"
+    echo "  git reset HEAD .env"
+    echo "  git restore --staged .env"
+    echo ""
+    exit 1
+fi
+
+# Check for common secret patterns in staged files
+SECRET_PATTERNS=(
+    "password\s*=\s*['\"][^'\"]+['\"]"
+    "api_key\s*=\s*['\"][^'\"]+['\"]"
+    "secret\s*=\s*['\"][^'\"]+['\"]"
+    "token\s*=\s*['\"][^'\"]+['\"]"
+    "POSTGRES_PASSWORD\s*=\s*[^$]"
+    "REDIS_PASSWORD\s*=\s*[^$]"
+    "MINIO_ROOT_PASSWORD\s*=\s*[^$]"
+    "aws_secret_access_key"
+    "private_key"
+    "BEGIN RSA PRIVATE KEY"
+    "BEGIN PRIVATE KEY"
+)
+
+FOUND_SECRETS=false
+
+for file in $(git diff --cached --name-only); do
+    if [ -f "$file" ]; then
+        for pattern in "${SECRET_PATTERNS[@]}"; do
+            if grep -iE "$pattern" "$file" > /dev/null 2>&1; then
+                if ! grep -q "CHANGE_ME" "$file" && ! grep -q ".example" "$file"; then
+                    echo -e "${RED}❌ ERROR: Potential secret found in $file${NC}"
+                    echo -e "${YELLOW}Pattern: $pattern${NC}"
+                    FOUND_SECRETS=true
+                fi
+            fi
+        done
+    fi
+done
+
+if [ "$FOUND_SECRETS" = true ]; then
+    echo ""
+    echo -e "${RED}Commit rejected due to potential secrets in code.${NC}"
+    echo ""
+    echo "If this is a false positive:"
+    echo "  1. Review the flagged content carefully"
+    echo "  2. Use environment variables instead: \${ENV_VAR}"
+    echo "  3. Add to .env.example (without real values)"
+    echo ""
+    echo "If you must bypass (NOT RECOMMENDED):"
+    echo "  git commit --no-verify"
+    echo ""
+    exit 1
+fi
+
+# Check for large files (potential model files)
+MAX_FILE_SIZE=10485760  # 10MB in bytes
+
+for file in $(git diff --cached --name-only); do
+    if [ -f "$file" ]; then
+        file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo 0)
+        if [ "$file_size" -gt "$MAX_FILE_SIZE" ]; then
+            echo -e "${YELLOW}⚠️  WARNING: Large file detected: $file ($(( file_size / 1024 / 1024 ))MB)${NC}"
+            echo "Consider using Git LFS for large binary files."
+            echo ""
+        fi
+    fi
+done
+
+# Check for TODO/FIXME in security-critical files
+SECURITY_FILES="docker-compose.yml .env.example */secrets* */security*"
+
+for pattern in $SECURITY_FILES; do
+    for file in $(git diff --cached --name-only | grep "$pattern" || true); do
+        if [ -f "$file" ]; then
+            if grep -iE "TODO|FIXME|XXX|HACK" "$file" > /dev/null 2>&1; then
+                echo -e "${YELLOW}⚠️  WARNING: Found TODO/FIXME in security-critical file: $file${NC}"
+                echo "Please resolve before committing to security branch."
+                echo ""
+            fi
+        fi
+    done
+done
+
+echo -e "${GREEN}✅ Security checks passed${NC}"
+exit 0

@@ -806,6 +806,7 @@ fn opts(name: &str, help: &str) -> prometheus::Opts {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[test]
     fn test_metrics_collector_creation() {

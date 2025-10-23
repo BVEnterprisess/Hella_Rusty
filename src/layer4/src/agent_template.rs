@@ -753,7 +753,9 @@ mod tests {
         );
 
         assert_eq!(report.accuracy, 1.0);
-        assert!(report.custom_metrics.get("test_metric").is_none());
+        // Verify the metric was recorded
+        assert!(report.custom_metrics.get("test_metric").is_some());
+        assert_eq!(*report.custom_metrics.get("test_metric").unwrap(), 42.0);
     }
 
     #[test]

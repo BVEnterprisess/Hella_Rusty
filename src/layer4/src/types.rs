@@ -33,7 +33,7 @@ pub type AgentId = Uuid;
 /// let background_task = Priority::Background; // Executes last
 /// assert!(critical_task > background_task);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Priority {
     /// Mission-critical tasks that must execute immediately
     Critical = 100,
@@ -45,6 +45,19 @@ pub enum Priority {
     Low = 25,
     /// Background tasks with minimal priority
     Background = 1,
+}
+
+impl Ord for Priority {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Compare by discriminant value (Critical=100 > High=75 > ... > Background=1)
+        (*self as u8).cmp(&(*other as u8))
+    }
+}
+
+impl PartialOrd for Priority {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 /// Execution state of a task
@@ -424,6 +437,19 @@ pub struct ResourceUsage {
     pub disk_io_ops: u64,
     /// GPU utilization (0.0 to 1.0, if applicable)
     pub gpu_utilization: Option<f32>,
+}
+
+impl Default for ResourceUsage {
+    fn default() -> Self {
+        Self {
+            cpu_seconds: 0.0,
+            memory_peak_mb: 0.0,
+            network_tx_bytes: 0,
+            network_rx_bytes: 0,
+            disk_io_ops: 0,
+            gpu_utilization: None,
+        }
+    }
 }
 
 /// Configuration for the Layer 4 execution system

@@ -1,0 +1,59 @@
+FROM rust:1.75-slim AS builder
+
+# Install system dependencies for scientific computing
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    libopenblas-dev \
+    liblapack-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy Layer 6 source code
+COPY src/layer6/Cargo.toml ./layer6/Cargo.toml
+COPY src/layer6/src ./layer6/src
+
+# Build the Layer 6 evolution service
+WORKDIR /app/layer6
+RUN cargo build --release
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+# Install runtime dependencies for scientific computing
+RUN apt-get update && apt-get install -y \
+    libssl3 \
+    ca-certificates \
+    libopenblas0 \
+    liblapack3 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user
+RUN useradd -r -s /bin/false appuser
+
+# Copy binary
+COPY --from=builder /app/layer6/target/release/evolution /usr/local/bin/evolution
+
+# Create directories for runtime artifacts
+RUN mkdir -p /app/populations /app/algorithms /app/logs && chown -R appuser:appuser /app
+
+USER appuser
+WORKDIR /app
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8082/health || exit 1
+
+EXPOSE 8082
+
+# Environment variables
+ENV RUST_LOG=info
+ENV POPULATION_SIZE=100
+ENV MAX_GENERATIONS=1000
+ENV MUTATION_RATE=0.1
+ENV CROSSOVER_RATE=0.8
+ENV ALGORITHM_SELECTION_INTERVAL=50
+
+CMD ["/usr/local/bin/evolution"]

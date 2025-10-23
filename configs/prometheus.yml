@@ -26,6 +26,22 @@ scrape_configs:
     scrape_interval: 10s
     metrics_path: '/metrics'
 
+  - job_name: 'discovery_service'
+    static_configs:
+      - targets: ['discovery:8081']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    params:
+      format: ['prometheus']
+
+  - job_name: 'evolution_service'
+    static_configs:
+      - targets: ['evolution:8082']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    params:
+      format: ['prometheus']
+
   - job_name: 'redis'
     static_configs:
       - targets: ['redis:6379']

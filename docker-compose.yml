@@ -157,6 +157,76 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # Layer 1 Discovery service
+  discovery:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.discovery
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme123}@redis:6379
+      - NATS_URL=nats://nats:4222
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-chimera}:${POSTGRES_PASSWORD:-changeme123}@postgres:5432/${POSTGRES_DB:-chimera}
+      - PROMETHEUS_GATEWAY=http://prometheus:9090
+      - SCAN_INTERVAL=${SCAN_INTERVAL:-60}
+      - DATA_RETENTION_HOURS=${DATA_RETENTION_HOURS:-24}
+      - ENABLE_SYSTEM_PROBES=${ENABLE_SYSTEM_PROBES:-true}
+      - ENABLE_NETWORK_PROBES=${ENABLE_NETWORK_PROBES:-true}
+      - ENABLE_CONTAINER_PROBES=${ENABLE_CONTAINER_PROBES:-true}
+      - RUST_LOG=${RUST_LOG:-info}
+    volumes:
+      - discovery_data:/app/data
+      - discovery_logs:/app/logs
+    depends_on:
+      - redis
+      - nats
+      - postgres
+      - prometheus
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Layer 6 Evolution service
+  evolution:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.evolution
+    ports:
+      - "8082:8082"
+    environment:
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme123}@redis:6379
+      - NATS_URL=nats://nats:4222
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-chimera}:${POSTGRES_PASSWORD:-changeme123}@postgres:5432/${POSTGRES_DB:-chimera}
+      - PROMETHEUS_GATEWAY=http://prometheus:9090
+      - POPULATION_SIZE=${POPULATION_SIZE:-100}
+      - MAX_GENERATIONS=${MAX_GENERATIONS:-1000}
+      - MUTATION_RATE=${MUTATION_RATE:-0.1}
+      - CROSSOVER_RATE=${CROSSOVER_RATE:-0.8}
+      - ALGORITHM_SELECTION_INTERVAL=${ALGORITHM_SELECTION_INTERVAL:-50}
+      - ENABLE_META_LEARNING=${ENABLE_META_LEARNING:-true}
+      - ENABLE_POPULATION_DYNAMICS=${ENABLE_POPULATION_DYNAMICS:-true}
+      - ENABLE_FITNESS_LANDSCAPE=${ENABLE_FITNESS_LANDSCAPE:-true}
+      - RUST_LOG=${RUST_LOG:-info}
+    volumes:
+      - evolution_populations:/app/populations
+      - evolution_algorithms:/app/algorithms
+      - evolution_logs:/app/logs
+    depends_on:
+      - redis
+      - nats
+      - postgres
+      - prometheus
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Playwright sandbox for testing
   playwright:
     image: mcr.microsoft.com/playwright:v1.40.0-jammy
@@ -172,11 +242,16 @@ services:
     command: npx playwright test --grep "sandbox"
 
 volumes:
-  redis_data:
-  prometheus_data:
-  grafana_data:
-  minio_data:
-  postgres_data:
+    redis_data:
+    prometheus_data:
+    grafana_data:
+    minio_data:
+    postgres_data:
+    discovery_data:
+    discovery_logs:
+    evolution_populations:
+    evolution_algorithms:
+    evolution_logs:
 
 networks:
   default:

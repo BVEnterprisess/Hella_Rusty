@@ -1,0 +1,278 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Project Chimera - Layer 6 Evolution Monitoring",
+    "tags": ["evolution", "genetic-algorithms", "meta-learning", "layer6"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Evolution Service Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"chimera-evolution-service\"}",
+            "legendFormat": "Up"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Evolution Generation Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(evolution_generations_total[5m])",
+            "legendFormat": "Generations/min"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Generations per minute"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Population Diversity",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "evolution_population_diversity",
+            "legendFormat": "Diversity Ratio"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Diversity (0-1)",
+            "min": 0,
+            "max": 1
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Best Fitness Score",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "evolution_best_fitness",
+            "legendFormat": "Best Fitness"
+          },
+          {
+            "expr": "evolution_average_fitness",
+            "legendFormat": "Average Fitness"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Fitness Score"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Algorithm Performance",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(evolution_algorithm_success_total[5m])",
+            "legendFormat": "Successful Runs"
+          },
+          {
+            "expr": "rate(evolution_algorithm_failures_total[5m])",
+            "legendFormat": "Failed Runs"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Runs per minute"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Meta-Learning Accuracy",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "evolution_meta_learning_accuracy",
+            "legendFormat": "Accuracy"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Accuracy (0-1)",
+            "min": 0,
+            "max": 1
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Population Migration Events",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(evolution_migration_events_total[5m])",
+            "legendFormat": "Migrations/min"
+          },
+          {
+            "expr": "rate(evolution_migration_failures_total[5m])",
+            "legendFormat": "Failed Migrations/min"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Events per minute"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Fitness Landscape Analysis",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "evolution_landscape_modality",
+            "legendFormat": "Modality"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 1
+                },
+                {
+                  "color": "green",
+                  "value": 2
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "Convergence Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "evolution_convergence_ratio",
+            "legendFormat": "Convergence"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 0.8
+                },
+                {
+                  "color": "red",
+                  "value": 0.95
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Resource Utilization",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(container_cpu_usage_seconds_total{pod=~\"evolution-.*\"}[5m]) * 100",
+            "legendFormat": "CPU %"
+          },
+          {
+            "expr": "container_memory_usage_bytes{pod=~\"evolution-.*\"} / 1024 / 1024",
+            "legendFormat": "Memory (MB)"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Usage"
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Evolution Generation Duration",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(evolution_generation_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(evolution_generation_duration_seconds_bucket[5m]))",
+            "legendFormat": "P50"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Duration (seconds)"
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Active Populations",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "count(evolution_population_size)",
+            "legendFormat": "Populations"
+          }
+        ]
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "30s"
+  }
+}

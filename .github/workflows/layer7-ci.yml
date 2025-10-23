@@ -1,0 +1,180 @@
+name: Layer7 Evolution CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/layer7/**'
+      - '.github/workflows/layer7-ci.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/layer7/**'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: layer7_test
+          POSTGRES_USER: layer7
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: "src/layer7"
+
+    - name: Run tests
+      working-directory: src/layer7
+      run: cargo test --verbose
+
+    - name: Run clippy
+      working-directory: src/layer7
+      run: cargo clippy -- -D warnings
+
+    - name: Check formatting
+      working-directory: src/layer7
+      run: cargo fmt --check
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: "src/layer7"
+
+    - name: Build release
+      working-directory: src/layer7
+      run: cargo build --release
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: layer7-binary
+        path: src/layer7/target/release/chimera-layer7
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: layer7-binary
+        path: src/layer7/target/release/
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: src/layer7
+        file: src/layer7/Dockerfile
+        push: true
+        tags: |
+          project-chimera/layer7:latest
+          project-chimera/layer7:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Deploy to staging
+      run: |
+        echo "Deploying Layer7 to staging Kubernetes cluster"
+        # kubectl apply -f src/layer7/k8s-deployment.yaml -n staging
+        # kubectl set image deployment/layer7-evolution layer7-evolution=project-chimera/layer7:${{ github.sha }} -n staging
+        # kubectl rollout status deployment/layer7-evolution -n staging
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Deploy to production
+      run: |
+        echo "Deploying Layer7 to production Kubernetes cluster"
+        # kubectl apply -f src/layer7/k8s-deployment.yaml -n production
+        # kubectl set image deployment/layer7-evolution layer7-evolution=project-chimera/layer7:${{ github.sha }} -n production
+        # kubectl rollout status deployment/layer7-evolution -n production
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.ref == 'refs/heads/main'
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: layer7_integration
+          POSTGRES_USER: layer7
+          POSTGRES_PASSWORD: integration_password
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run integration tests
+      run: |
+        echo "Running Layer7 integration tests"
+        # docker run --network host project-chimera/layer7:${{ github.sha }} layer7-integration-test

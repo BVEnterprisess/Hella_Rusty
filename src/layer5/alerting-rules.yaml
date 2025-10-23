@@ -1,0 +1,294 @@
+# Alerting Rules for Layer5 Production Monitoring
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: layer5-alerting-rules
+  namespace: project-chimera
+data:
+  alerting-rules.yml: |
+    groups:
+    - name: layer5_optimization
+      rules:
+      - alert: Layer5HighLatency
+        expr: |
+          histogram_quantile(0.95, rate(layer5_kpi_processing_duration_seconds_bucket[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: layer5
+          component: kpi-ingestion
+        annotations:
+          summary: "Layer5 KPI processing latency is high"
+          description: "95th percentile of KPI processing latency is {{ $value }}s (threshold: 0.1s)"
+          runbook_url: "https://wiki.company.com/runbooks/layer5-high-latency"
+
+      - alert: Layer5OptimizationAccuracyLow
+        expr: |
+          rate(layer5_optimization_accuracy_total[10m]) < 0.95
+        for: 10m
+        labels:
+          severity: critical
+          service: layer5
+          component: optimization-engine
+        annotations:
+          summary: "Layer5 optimization accuracy below threshold"
+          description: "Current accuracy: {{ $value }} (threshold: 95%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer5-low-accuracy"
+
+      - alert: Layer5HighErrorRate
+        expr: |
+          rate(layer5_errors_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+          service: layer5
+          component: system
+        annotations:
+          summary: "Layer5 error rate is elevated"
+          description: "Error rate: {{ $value }} (threshold: 1%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer5-high-errors"
+
+      - alert: Layer5BufferNearCapacity
+        expr: |
+          layer5_buffer_size / layer5_buffer_capacity > 0.9
+        for: 2m
+        labels:
+          severity: warning
+          service: layer5
+          component: kpi-ingestion
+        annotations:
+          summary: "Layer5 buffer usage near capacity"
+          description: "Buffer usage: {{ $value | printf \"%.0f\" }}% (threshold: 90%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer5-buffer-overflow"
+
+      - alert: Layer5IntegrationFailure
+        expr: |
+          rate(layer5_integration_errors_total[5m]) > 0.001
+        for: 3m
+        labels:
+          severity: critical
+          service: layer5
+          component: integration
+        annotations:
+          summary: "Layer5 integration failures detected"
+          description: "Integration error rate: {{ $value }} (threshold: 0.1%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer5-integration-failure"
+
+      - alert: Layer5ModelDrift
+        expr: |
+          layer5_model_performance_drift > 0.1
+        for: 1h
+        labels:
+          severity: warning
+          service: layer5
+          component: optimization-engine
+        annotations:
+          summary: "Layer5 model performance drift detected"
+          description: "Performance drift: {{ $value }} (threshold: 10%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer5-model-drift"
+
+      - alert: Layer5ResourceExhaustion
+        expr: |
+          (1 - (avg_over_time(container_memory_usage_bytes{pod=~"layer5-.*"}[5m]) / avg_over_time(container_spec_memory_limit_bytes{pod=~"layer5-.*"}[5m]))) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          service: layer5
+          component: system
+        annotations:
+          summary: "Layer5 memory usage critical"
+          description: "Available memory: {{ $value | printf \"%.0f\" }}% (threshold: 10%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer5-resource-exhaustion"
+
+    - name: layer5_business_metrics
+      rules:
+      - alert: Layer5OptimizationCoverageLow
+        expr: |
+          layer5_optimization_coverage < 0.8
+        for: 30m
+        labels:
+          severity: warning
+          service: layer5
+          component: business-metrics
+        annotations:
+          summary: "Layer5 optimization coverage below target"
+          description: "Coverage: {{ $value | printf \"%.0f\" }}% (target: 80%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer5-low-coverage"
+
+      - alert: Layer5PerformanceImprovementBelowTarget
+        expr: |
+          layer5_avg_performance_improvement < 0.2
+        for: 1h
+        labels:
+          severity: info
+          service: layer5
+          component: business-metrics
+        annotations:
+          summary: "Layer5 performance improvement below target"
+          description: "Improvement: {{ $value | printf \"%.0f\" }}% (target: 20%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer5-low-improvement"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: layer5-grafana-dashboards
+  namespace: project-chimera
+data:
+  layer5-main-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Layer5 Refinement - Main Dashboard",
+        "tags": ["layer5", "production"],
+        "timezone": "UTC",
+        "panels": [
+          {
+            "title": "KPI Processing Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(layer5_kpi_processed_total[5m])",
+                "legendFormat": "KPI/s",
+                "interval": "30s"
+              }
+            ],
+            "yAxes": [
+              {"label": "Rate (KPI/s)", "min": 0}
+            ],
+            "thresholds": [
+              {"colorMode": "critical", "op": "lt", "value": 100}
+            ]
+          },
+          {
+            "title": "Optimization Accuracy",
+            "type": "singlestat",
+            "targets": [
+              {
+                "expr": "rate(layer5_optimization_accuracy_total[10m]) * 100",
+                "legendFormat": "Accuracy %",
+                "interval": "1m"
+              }
+            ],
+            "thresholds": [
+              {"colorMode": "critical", "op": "lt", "value": 95},
+              {"colorMode": "warning", "op": "lt", "value": 98}
+            ],
+            "format": "percent",
+            "nullPointMode": "null as zero"
+          },
+          {
+            "title": "Buffer Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "(layer5_buffer_size / layer5_buffer_capacity) * 100",
+                "legendFormat": "Buffer Usage %",
+                "interval": "30s"
+              }
+            ],
+            "yAxes": [
+              {"label": "Usage %", "min": 0, "max": 100}
+            ],
+            "thresholds": [
+              {"colorMode": "warning", "op": "gt", "value": 80},
+              {"colorMode": "critical", "op": "gt", "value": 90}
+            ]
+          },
+          {
+            "title": "Error Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(layer5_errors_total[5m]) * 100",
+                "legendFormat": "Error Rate %",
+                "interval": "30s"
+              }
+            ],
+            "yAxes": [
+              {"label": "Error Rate %", "min": 0, "max": 5}
+            ],
+            "thresholds": [
+              {"colorMode": "warning", "op": "gt", "value": 1},
+              {"colorMode": "critical", "op": "gt", "value": 2}
+            ]
+          },
+          {
+            "title": "Processing Latency",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(layer5_kpi_processing_duration_seconds_bucket[5m])) * 1000",
+                "legendFormat": "95th percentile (ms)",
+                "interval": "30s"
+              },
+              {
+                "expr": "histogram_quantile(0.99, rate(layer5_kpi_processing_duration_seconds_bucket[5m])) * 1000",
+                "legendFormat": "99th percentile (ms)",
+                "interval": "30s"
+              }
+            ],
+            "yAxes": [
+              {"label": "Latency (ms)", "min": 0}
+            ],
+            "thresholds": [
+              {"colorMode": "warning", "op": "gt", "value": 100},
+              {"colorMode": "critical", "op": "gt", "value": 200}
+            ]
+          },
+          {
+            "title": "Active Agents",
+            "type": "singlestat",
+            "targets": [
+              {
+                "expr": "layer5_active_agents",
+                "legendFormat": "Active Agents",
+                "interval": "1m"
+              }
+            ],
+            "format": "none",
+            "thresholds": [
+              {"colorMode": "warning", "op": "lt", "value": 800}
+            ]
+          },
+          {
+            "title": "Performance Improvement",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "layer5_avg_performance_improvement * 100",
+                "legendFormat": "Avg Improvement %",
+                "interval": "5m"
+              }
+            ],
+            "yAxes": [
+              {"label": "Improvement %", "min": 0, "max": 50}
+            ],
+            "thresholds": [
+              {"colorMode": "warning", "op": "lt", "value": 20}
+            ]
+          },
+          {
+            "title": "Integration Health",
+            "type": "singlestat",
+            "targets": [
+              {
+                "expr": "up{job=\"layer5-integration\"}",
+                "legendFormat": "{{ instance }}",
+                "interval": "30s"
+              }
+            ],
+            "format": "none",
+            "thresholds": [
+              {"colorMode": "critical", "op": "lt", "value": 1}
+            ]
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s",
+        "schemaVersion": 16
+      }
+    }

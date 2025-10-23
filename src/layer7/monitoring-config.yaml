@@ -1,0 +1,299 @@
+# Monitoring and Alerting Configuration for Layer7 Evolution System
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: layer7-monitoring-config
+  namespace: project-chimera
+data:
+  prometheus-rules.yml: |
+    groups:
+    - name: layer7_evolution
+      rules:
+      - alert: Layer7EvolutionStalled
+        expr: |
+          increase(layer7_evolution_generations_completed[1h]) == 0
+        for: 2h
+        labels:
+          severity: warning
+          service: layer7
+          component: evolution-engine
+        annotations:
+          summary: "Layer7 evolution process has stalled"
+          description: "No new generations completed in {{ $value }} hours"
+          runbook_url: "https://wiki.company.com/runbooks/layer7-evolution-stalled"
+
+      - alert: Layer7LowFitnessImprovement
+        expr: |
+          layer7_best_fitness < 0.8
+        for: 1h
+        labels:
+          severity: warning
+          service: layer7
+          component: evolution-engine
+        annotations:
+          summary: "Layer7 evolution showing low fitness improvement"
+          description: "Best fitness score: {{ $value }} (threshold: 0.8)"
+          runbook_url: "https://wiki.company.com/runbooks/layer7-low-fitness"
+
+      - alert: Layer7HighGenomeCorruption
+        expr: |
+          rate(layer7_genome_corruption_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          service: layer7
+          component: genome-manager
+        annotations:
+          summary: "Layer7 genome corruption rate is high"
+          description: "Corruption rate: {{ $value }} (threshold: 1%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer7-genome-corruption"
+
+      - alert: Layer7IntegrationFailure
+        expr: |
+          rate(layer7_integration_errors_total[5m]) > 0.001
+        for: 3m
+        labels:
+          severity: critical
+          service: layer7
+          component: integration
+        annotations:
+          summary: "Layer7 integration failures detected"
+          description: "Integration error rate: {{ $value }} (threshold: 0.1%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer7-integration-failure"
+
+      - alert: Layer7ResourceExhaustion
+        expr: |
+          (1 - (avg_over_time(container_memory_usage_bytes{pod=~"layer7-.*"}[5m]) / avg_over_time(container_spec_memory_limit_bytes{pod=~"layer7-.*"}[5m]))) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          service: layer7
+          component: system
+        annotations:
+          summary: "Layer7 memory usage critical"
+          description: "Available memory: {{ $value | printf \"%.0f\" }}% (threshold: 10%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer7-resource-exhaustion"
+
+      - alert: Layer7EvolutionTimeout
+        expr: |
+          layer7_experiment_duration_hours > 24
+        for: 0m
+        labels:
+          severity: warning
+          service: layer7
+          component: evolution-pipeline
+        annotations:
+          summary: "Layer7 evolution experiment timeout"
+          description: "Experiment running for {{ $value }} hours (limit: 24h)"
+          runbook_url: "https://wiki.company.com/runbooks/layer7-evolution-timeout"
+
+    - name: layer7_business_metrics
+      rules:
+      - alert: Layer7EvolutionCoverageLow
+        expr: |
+          layer7_evolution_coverage < 0.7
+        for: 1h
+        labels:
+          severity: info
+          service: layer7
+          component: business-metrics
+        annotations:
+          summary: "Layer7 evolution coverage below target"
+          description: "Coverage: {{ $value | printf \"%.0f\" }}% (target: 70%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer7-low-coverage"
+
+      - alert: Layer7AgentImprovementStagnant
+        expr: |
+          increase(layer7_agent_improvement_score[7d]) < 0.05
+        for: 0m
+        labels:
+          severity: info
+          service: layer7
+          component: business-metrics
+        annotations:
+          summary: "Layer7 agent improvement stagnant"
+          description: "Weekly improvement: {{ $value }} (threshold: 5%)"
+          runbook_url: "https://wiki.company.com/runbooks/layer7-improvement-stagnant"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: layer7-grafana-dashboards
+  namespace: project-chimera
+data:
+  evolution-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Layer7 Evolution System",
+        "tags": ["layer7", "evolution", "genetic-algorithms"],
+        "timezone": "UTC",
+        "panels": [
+          {
+            "title": "Evolution Progress",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "layer7_current_generation",
+                "legendFormat": "Current Generation",
+                "interval": "30s"
+              },
+              {
+                "expr": "layer7_best_fitness",
+                "legendFormat": "Best Fitness",
+                "interval": "30s"
+              }
+            ],
+            "yAxes": [
+              {"label": "Generation", "min": 0},
+              {"label": "Fitness", "min": 0, "max": 1}
+            ]
+          },
+          {
+            "title": "Population Diversity",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "layer7_genetic_diversity",
+                "legendFormat": "Genetic Diversity",
+                "interval": "30s"
+              },
+              {
+                "expr": "layer7_phenotypic_diversity",
+                "legendFormat": "Phenotypic Diversity",
+                "interval": "30s"
+              }
+            ],
+            "yAxes": [
+              {"label": "Diversity", "min": 0, "max": 1}
+            ]
+          },
+          {
+            "title": "Fitness Distribution",
+            "type": "heatmap",
+            "targets": [
+              {
+                "expr": "layer7_population_fitness",
+                "legendFormat": "Fitness",
+                "interval": "30s"
+              }
+            ]
+          },
+          {
+            "title": "Evolution Throughput",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(layer7_genomes_evaluated_total[5m])",
+                "legendFormat": "Genomes/sec",
+                "interval": "30s"
+              }
+            ],
+            "yAxes": [
+              {"label": "Throughput (genomes/sec)", "min": 0}
+            ]
+          },
+          {
+            "title": "Integration Health",
+            "type": "singlestat",
+            "targets": [
+              {
+                "expr": "up{job=\"layer7-integration\"}",
+                "legendFormat": "{{ instance }}",
+                "interval": "30s"
+              }
+            ],
+            "thresholds": [
+              {"colorMode": "critical", "op": "lt", "value": 1}
+            ]
+          },
+          {
+            "title": "Resource Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "layer7_cpu_usage_percent",
+                "legendFormat": "CPU %",
+                "interval": "30s"
+              },
+              {
+                "expr": "layer7_memory_usage_gb",
+                "legendFormat": "Memory (GB)",
+                "interval": "30s"
+              }
+            ],
+            "yAxes": [
+              {"label": "CPU %", "min": 0, "max": 100},
+              {"label": "Memory (GB)", "min": 0}
+            ]
+          }
+        ],
+        "time": {
+          "from": "now-6h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: layer7-healthcheck
+  namespace: project-chimera
+data:
+  healthcheck.sh: |
+    #!/bin/bash
+    # Health check script for Layer7 Evolution System
+
+    LAYER7_URL="http://layer7-service:8080/health"
+
+    if curl -f -s $LAYER7_URL > /dev/null; then
+        echo "Layer7 Evolution System is healthy"
+        exit 0
+    else
+        echo "Layer7 Evolution System is unhealthy"
+        exit 1
+    fi
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: layer7-evolution-backup
+  namespace: project-chimera
+spec:
+  schedule: "0 3 * * *"  # Daily at 3 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: evolution-backup
+            image: project-chimera/layer7:latest
+            command: ["/bin/bash", "-c"]
+            args: ["layer7-backup-evolution --output /backup/evolution-$(date +%Y%m%d).tar.gz"]
+            volumeMounts:
+            - name: backup-volume
+              mountPath: /backup
+          volumes:
+          - name: backup-volume
+            persistentVolumeClaim:
+              claimName: layer7-backup-pvc
+          restartPolicy: OnFailure
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: layer7-backup-pvc
+  namespace: project-chimera
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: "fast-ssd"

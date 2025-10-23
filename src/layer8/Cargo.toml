@@ -1,0 +1,59 @@
+[package]
+name = "layer8-resource-management"
+version = "0.1.0"
+edition = "2021"
+description = "Layer 8 (Resource Management) - GPU allocation, cost optimization, and resource scheduling"
+authors = ["Project Chimera Team"]
+license = "MIT"
+repository = "https://github.com/BVEnterprisess/Project-Chimera"
+
+[dependencies]
+# Core async runtime
+tokio = { version = "1.0", features = ["full"] }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging and metrics
+tracing = "0.1"
+tracing-subscriber = "0.3"
+prometheus = "0.13"
+
+# HTTP client for Kubernetes API
+reqwest = { version = "0.11", features = ["json"] }
+kube = { version = "0.87", features = ["client", "derive"] }
+
+# Database integration
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json"] }
+
+# Configuration management
+config = "0.14"
+clap = { version = "4.0", features = ["derive"] }
+
+# Utilities
+uuid = { version = "1.0", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
+
+# Layer integration traits
+chimera-layer4 = { path = "../layer4" }
+chimera-layer5 = { path = "../layer5" }
+chimera-layer7 = { path = "../layer7" }
+
+[dev-dependencies]
+tempfile = "3.0"
+mockall = "0.12"
+
+[build-dependencies]
+anyhow = "1.0"
+
+[package.metadata]
+layer = "8"
+component = "resource-management"
+integration = "kubernetes"

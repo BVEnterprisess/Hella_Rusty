@@ -1,0 +1,236 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Project Chimera - Layer 1 Discovery Monitoring",
+    "tags": ["discovery", "monitoring", "layer1"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Discovery Service Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"chimera-discovery-service\"}",
+            "legendFormat": "Up"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Discovery Scan Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(discovery_scans_total[5m])",
+            "legendFormat": "Scans/min"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Scans per minute"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Discovery Scan Duration",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(discovery_scan_duration_seconds_bucket[5m]))",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(discovery_scan_duration_seconds_bucket[5m]))",
+            "legendFormat": "P50"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Duration (seconds)"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "System Resources Discovered",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "discovery_resources_total",
+            "legendFormat": "Total Resources"
+          },
+          {
+            "expr": "increase(discovery_resources_total[1h])",
+            "legendFormat": "New Resources (1h)"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Resource Count"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Data Collection Events",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(data_collection_events_total[5m])",
+            "legendFormat": "Events/min"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Events per minute"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "System Health Checks",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(system_health_checks_total[5m])",
+            "legendFormat": "Health Checks/min"
+          },
+          {
+            "expr": "rate(system_health_checks_failed_total[5m])",
+            "legendFormat": "Failed Checks/min"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Checks per minute"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Network Probe Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "avg(network_probe_success_ratio)",
+            "legendFormat": "Success Rate"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "yellow",
+                  "value": 0.9
+                },
+                {
+                  "color": "green",
+                  "value": 0.95
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "Container Discovery",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "container_discovery_total",
+            "legendFormat": "Containers"
+          },
+          {
+            "expr": "container_running_total",
+            "legendFormat": "Running"
+          },
+          {
+            "expr": "container_failed_total",
+            "legendFormat": "Failed"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Container Count"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Discovery Errors",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(discovery_scan_failures_total[5m])",
+            "legendFormat": "Scan Failures"
+          },
+          {
+            "expr": "rate(system_probe_failures_total[5m])",
+            "legendFormat": "Probe Failures"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Errors per minute"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Resource Utilization",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(container_cpu_usage_seconds_total{pod=~\"discovery-.*\"}[5m]) * 100",
+            "legendFormat": "CPU %"
+          },
+          {
+            "expr": "container_memory_usage_bytes{pod=~\"discovery-.*\"} / 1024 / 1024",
+            "legendFormat": "Memory (MB)"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Usage"
+          }
+        ]
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "30s"
+  }
+}

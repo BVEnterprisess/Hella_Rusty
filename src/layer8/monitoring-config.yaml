@@ -1,0 +1,131 @@
+# Layer 8 (Resource Management) Monitoring Configuration
+groups:
+  - name: layer8.resource_management
+    rules:
+      # Resource allocation alerts
+      - alert: Layer8HighAllocationFailureRate
+        expr: rate(layer8_allocation_failures_total[5m]) / rate(layer8_allocations_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          layer: "8"
+          component: resource_management
+        annotations:
+          summary: "High allocation failure rate in Layer 8"
+          description: "Layer 8 allocation failure rate is {{ $value }}%"
+
+      - alert: Layer8ResourceExhaustion
+        expr: layer8_gpu_utilization_ratio > 0.95
+        for: 10m
+        labels:
+          severity: critical
+          layer: "8"
+          component: resource_management
+        annotations:
+          summary: "GPU resources exhausted in Layer 8"
+          description: "GPU utilization is {{ $value }}%"
+
+      # Cost optimization alerts
+      - alert: Layer8BudgetOverrun
+        expr: layer8_budget_utilization_ratio > 0.9
+        for: 1h
+        labels:
+          severity: warning
+          layer: "8"
+          component: cost_optimization
+        annotations:
+          summary: "Budget overrun in Layer 8"
+          description: "Budget utilization is {{ $value }}%"
+
+      - alert: Layer8HighCostSpike
+        expr: increase(layer8_cost_total[1h]) > 50
+        for: 30m
+        labels:
+          severity: warning
+          layer: "8"
+          component: cost_optimization
+        annotations:
+          summary: "Cost spike detected in Layer 8"
+          description: "Cost increased by ${{ $value }} in the last hour"
+
+      # Performance alerts
+      - alert: Layer8HighAllocationLatency
+        expr: histogram_quantile(0.95, rate(layer8_allocation_latency_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+          layer: "8"
+          component: performance
+        annotations:
+          summary: "High allocation latency in Layer 8"
+          description: "95th percentile allocation latency is {{ $value }}s"
+
+      - alert: Layer8LowResourceEfficiency
+        expr: layer8_resource_efficiency_ratio < 0.7
+        for: 15m
+        labels:
+          severity: info
+          layer: "8"
+          component: performance
+        annotations:
+          summary: "Low resource efficiency in Layer 8"
+          description: "Resource efficiency is {{ $value }}%"
+
+      # Integration alerts
+      - alert: Layer8IntegrationFailure
+        expr: up{job="layer8-resource-management"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          layer: "8"
+          component: integration
+        annotations:
+          summary: "Layer 8 integration failure"
+          description: "Layer 8 service is down"
+
+      - alert: Layer8CrossLayerCommunicationFailure
+        expr: increase(layer8_integration_errors_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          layer: "8"
+          component: integration
+        annotations:
+          summary: "Cross-layer communication failure in Layer 8"
+          description: "Integration errors: {{ $value }}"
+
+  - name: layer8.capacity_planning
+    rules:
+      # Capacity planning alerts
+      - alert: Layer8CapacityShortagePredicted
+        expr: predict_linear(layer8_gpu_utilization_ratio[7d], 7*24*3600) > 0.9
+        for: 1h
+        labels:
+          severity: warning
+          layer: "8"
+          component: capacity_planning
+        annotations:
+          summary: "GPU capacity shortage predicted in Layer 8"
+          description: "Predicted GPU utilization: {{ $value }}% in 7 days"
+
+      - alert: Layer8ScalingRecommendation
+        expr: layer8_scaling_recommendations_total > 0
+        for: 30m
+        labels:
+          severity: info
+          layer: "8"
+          component: capacity_planning
+        annotations:
+          summary: "Scaling recommendation available in Layer 8"
+          description: "Capacity planner suggests scaling action"
+
+      - alert: Layer8CostOptimizationOpportunity
+        expr: layer8_cost_savings_ratio > 0.1
+        for: 2h
+        labels:
+          severity: info
+          layer: "8"
+          component: capacity_planning
+        annotations:
+          summary: "Cost optimization opportunity in Layer 8"
+          description: "Potential savings: {{ $value }}%"

@@ -1,3 +1,14 @@
+[workspace]
+members = [
+    "src/layer2",
+    "src/layer3",
+    "src/layer4",
+    "src/layer5",
+    "src/layer7",
+    "src/layer8",
+]
+exclude = []
+
 [package]
 name = "project-chimera"
 version = "0.1.0"
@@ -29,7 +40,6 @@ candle-core = "0.6"
 candle-nn = "0.6"
 candle-transformers = "0.6"
 candle-datasets = "0.6"
-candle-lora = "0.6"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -74,6 +84,41 @@ argon2 = "0.5"
 # File operations
 walkdir = "2.4"
 qdrant-client = "1.15.0"
+
+# Workspace-level build profiles for consistent optimization across all layers
+[profile.dev]
+opt-level = 0
+debug = true
+overflow-checks = true
+debug-assertions = true
+panic = "unwind"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
+
+[profile.bench]
+opt-level = 3
+debug = false
+lto = true
+debug-assertions = false
+overflow-checks = false
+
+[profile.test]
+opt-level = 0
+debug = true
+overflow-checks = true
+debug-assertions = true
+
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = false
+panic = "unwind"
 
 [dev-dependencies]
 tempfile = "3.0"

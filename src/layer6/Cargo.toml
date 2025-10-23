@@ -1,0 +1,90 @@
+[package]
+name = "layer6-evolution"
+version = "0.1.0"
+edition = "2021"
+description = "Layer 6 (Evolution) - Advanced evolutionary algorithms and meta-learning for Project Chimera"
+authors = ["Project Chimera Team"]
+license = "MIT"
+repository = "https://github.com/BVEnterprisess/Project-Chimera"
+
+[dependencies]
+# Core async runtime
+tokio = { version = "1.0", features = ["full"] }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging and metrics
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+prometheus = "0.13"
+lazy_static = "1.4"
+
+# Mathematical and statistical libraries
+nalgebra = "0.32"
+statrs = "0.16"
+rand = "0.8"
+rand_distr = "0.4"
+
+# Machine learning and optimization
+candle-core = "0.6"
+candle-nn = "0.6"
+candle-datasets = "0.6"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Collections and utilities
+uuid = { version = "1.0", features = ["v4"] }
+rayon = "1.8"  # For parallel computation
+
+# Configuration
+config = "0.14"
+
+# Inter-process communication
+crossbeam-channel = "0.5"
+
+# Optional Python integration for advanced algorithms
+pyo3 = { version = "0.20", features = ["auto-initialize"], optional = true }
+
+[dev-dependencies]
+tempfile = "3.0"
+mockall = "0.12"
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.0"
+
+[features]
+default = []
+python-integration = ["pyo3"]
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true
+overflow-checks = true
+
+[[bench]]
+name = "evolution_benchmarks"
+harness = false
+
+[[bench]]
+name = "meta_learning_benchmarks"
+harness = false
+
+[[bench]]
+name = "population_dynamics_benchmarks"
+harness = false

@@ -1,0 +1,164 @@
+# Prometheus configuration for Layer5 monitoring
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: layer5-prometheus-rules
+  namespace: project-chimera
+data:
+  layer5-alerts.yml: |
+    groups:
+    - name: layer5.alerts
+      rules:
+      - alert: Layer5HighLatency
+        expr: histogram_quantile(0.95, rate(layer5_kpi_processing_duration_seconds_bucket[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Layer5 KPI processing latency is high"
+          description: "95th percentile of KPI processing latency is {{ $value }}s"
+
+      - alert: Layer5OptimizationAccuracyLow
+        expr: rate(layer5_optimization_accuracy_total[5m]) < 0.95
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Layer5 optimization accuracy is below threshold"
+          description: "Optimization accuracy is {{ $value }}"
+
+      - alert: Layer5HighErrorRate
+        expr: rate(layer5_errors_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Layer5 error rate is high"
+          description: "Error rate is {{ $value }}"
+
+      - alert: Layer5BufferOverflow
+        expr: layer5_buffer_size > 0.9 * layer5_buffer_capacity
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Layer5 buffer is near capacity"
+          description: "Buffer usage is {{ $value }}%"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: layer5-grafana-dashboard
+  namespace: project-chimera
+data:
+  layer5-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Layer5 Refinement Monitoring",
+        "tags": ["layer5", "optimization"],
+        "panels": [
+          {
+            "title": "KPI Processing Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(layer5_kpi_processed_total[5m])",
+                "legendFormat": "KPI/s"
+              }
+            ]
+          },
+          {
+            "title": "Optimization Accuracy",
+            "type": "singlestat",
+            "targets": [
+              {
+                "expr": "rate(layer5_optimization_accuracy_total[5m])",
+                "legendFormat": "Accuracy"
+              }
+            ]
+          },
+          {
+            "title": "Buffer Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "layer5_buffer_size / layer5_buffer_capacity",
+                "legendFormat": "Buffer Usage %"
+              }
+            ]
+          },
+          {
+            "title": "Error Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(layer5_errors_total[5m])",
+                "legendFormat": "Errors/s"
+              }
+            ]
+          }
+        ]
+      }
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: layer5-healthcheck
+  namespace: project-chimera
+data:
+  healthcheck.sh: |
+    #!/bin/bash
+    # Health check script for Layer5
+
+    LAYER5_URL="http://layer5-service:8080/health"
+
+    if curl -f -s $LAYER5_URL > /dev/null; then
+        echo "Layer5 is healthy"
+        exit 0
+    else
+        echo "Layer5 is unhealthy"
+        exit 1
+    fi
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: layer5-backup
+  namespace: project-chimera
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: backup
+            image: project-chimera/layer5:latest
+            command: ["/bin/bash", "-c"]
+            args: ["layer5-backup --output /backup/layer5-$(date +%Y%m%d).tar.gz"]
+            volumeMounts:
+            - name: backup-volume
+              mountPath: /backup
+          volumes:
+          - name: backup-volume
+            persistentVolumeClaim:
+              claimName: layer5-backup-pvc
+          restartPolicy: OnFailure
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: layer5-backup-pvc
+  namespace: project-chimera
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

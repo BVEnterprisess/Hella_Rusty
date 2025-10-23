@@ -1,0 +1,244 @@
+# Automated Model Retraining Pipeline for Layer5
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: layer5-model-retraining
+  namespace: project-chimera
+  labels:
+    app: layer5
+    component: ml-pipeline
+spec:
+  schedule: "0 2 * * 0"  # Weekly on Sunday at 2 AM UTC
+  timeZone: "UTC"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: model-retraining
+            image: project-chimera/layer5:latest
+            imagePullPolicy: Always
+            command: ["/bin/bash", "-c"]
+            args:
+            - |
+              echo "Starting Layer5 model retraining pipeline..."
+
+              # Set up environment
+              export RUST_LOG=info
+              export MODEL_RETRAINING_MODE=true
+
+              # Run data collection
+              echo "Collecting training data from last 7 days..."
+              layer5-collect-training-data --days 7 --output /tmp/training-data
+
+              # Validate data quality
+              echo "Validating training data quality..."
+              layer5-validate-data --input /tmp/training-data --min-quality 0.95
+
+              # Preprocess data
+              echo "Preprocessing training data..."
+              layer5-preprocess-data --input /tmp/training-data --output /tmp/processed-data
+
+              # Train new models
+              echo "Training optimization models..."
+              layer5-train-models \
+                --data /tmp/processed-data \
+                --algorithms bandit,bayesian,gradient \
+                --output /tmp/models \
+                --validation-split 0.2 \
+                --epochs 100
+
+              # Validate new models
+              echo "Validating trained models..."
+              layer5-validate-models \
+                --models /tmp/models \
+                --test-data /tmp/processed-data \
+                --min-accuracy 0.96 \
+                --max-latency 0.05
+
+              # A/B test new models
+              echo "Running A/B test with new models..."
+              layer5-ab-test \
+                --models /tmp/models \
+                --control-models /app/models/current \
+                --traffic-split 0.1 \
+                --duration 24h \
+                --min-improvement 0.02
+
+              # Deploy improved models
+              if layer5-ab-test-results --experiment latest --improvement > 0.02; then
+                echo "Deploying improved models..."
+                layer5-deploy-models --models /tmp/models --environment production
+                layer5-update-model-registry --models /tmp/models --version $(date +%Y%m%d-%H%M%S)
+              else
+                echo "No significant improvement detected, keeping current models"
+              fi
+
+              # Cleanup
+              echo "Cleaning up temporary files..."
+              rm -rf /tmp/training-data /tmp/processed-data /tmp/models
+
+              echo "Model retraining pipeline completed successfully"
+            env:
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: layer5-secrets
+                  key: redis-url
+            - name: LAYER4_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: layer5-config
+                  key: layer4-api-url
+            - name: MODEL_STORAGE_PATH
+              value: "/app/models"
+            - name: TRAINING_DATA_RETENTION_DAYS
+              value: "30"
+            resources:
+              requests:
+                memory: "4Gi"
+                cpu: "2000m"
+                ephemeral-storage: "10Gi"
+              limits:
+                memory: "8Gi"
+                cpu: "4000m"
+                ephemeral-storage: "20Gi"
+            volumeMounts:
+            - name: model-storage
+              mountPath: /app/models
+            - name: training-data
+              mountPath: /tmp
+            - name: config-volume
+              mountPath: /app/configs
+          volumes:
+          - name: model-storage
+            persistentVolumeClaim:
+              claimName: layer5-models-pvc
+          - name: training-data
+            emptyDir:
+              sizeLimit: 20Gi
+          - name: config-volume
+            configMap:
+              name: layer5-config
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 2000
+          nodeSelector:
+            node-type: "compute-optimized"
+          tolerations:
+          - key: "dedicated"
+            operator: "Equal"
+            value: "ml-training"
+            effect: "NoSchedule"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: layer5-models-pvc
+  namespace: project-chimera
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: "fast-ssd"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: layer5-retraining-config
+  namespace: project-chimera
+data:
+  training-schedule: "0 2 * * 0"  # Weekly
+  data-retention-days: "30"
+  min-model-accuracy: "0.96"
+  max-training-latency: "0.05"
+  ab-test-traffic-split: "0.1"
+  ab-test-duration: "24h"
+  min-improvement-threshold: "0.02"
+  model-versions-to-keep: "5"
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: layer5-performance-monitoring
+  namespace: project-chimera
+  labels:
+    app: layer5
+    component: monitoring
+spec:
+  schedule: "*/15 * * * *"  # Every 15 minutes
+  timeZone: "UTC"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: performance-monitor
+            image: project-chimera/layer5:latest
+            command: ["/bin/bash", "-c"]
+            args:
+            - |
+              echo "Running Layer5 performance monitoring..."
+
+              # Collect performance metrics
+              layer5-collect-metrics --output /tmp/metrics.json
+
+              # Check for performance degradation
+              layer5-analyze-drift --metrics /tmp/metrics.json --baseline /app/baselines/current
+
+              # Alert if drift detected
+              if layer5-detect-drift --input /tmp/drift-analysis --threshold 0.1; then
+                echo "Performance drift detected, triggering alert..."
+                layer5-trigger-alert --type performance-drift --severity warning
+              fi
+
+              # Update performance baselines
+              layer5-update-baselines --metrics /tmp/metrics.json
+
+              echo "Performance monitoring completed"
+            volumeMounts:
+            - name: baselines-storage
+              mountPath: /app/baselines
+            - name: metrics-storage
+              mountPath: /tmp
+          volumes:
+          - name: baselines-storage
+            persistentVolumeClaim:
+              claimName: layer5-baselines-pvc
+          - name: metrics-storage
+            emptyDir: {}
+          restartPolicy: Never
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: layer5-baselines-pvc
+  namespace: project-chimera
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: "standard"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: layer5-training-secrets
+  namespace: project-chimera
+type: Opaque
+data:
+  # Base64 encoded sensitive configuration
+  training-api-key: <base64-encoded-api-key>
+  model-registry-token: <base64-encoded-token>

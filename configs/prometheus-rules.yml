@@ -123,3 +123,144 @@ groups:
       annotations:
         summary: "Service is restarting frequently"
         description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last hour."
+
+  - name: discovery_alerts
+    rules:
+    - alert: DiscoveryServiceDown
+      expr: up{job="chimera-discovery-service"} == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Discovery service is down"
+        description: "Discovery service {{ $labels.instance }} has been down for more than 2 minutes."
+        runbook_url: "https://docs.project-chimera.com/runbooks/discovery-down"
+
+    - alert: DiscoveryScanFailed
+      expr: increase(discovery_scan_failures_total[5m]) > 0
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Discovery scan failed"
+        description: "{{ $value }} discovery scans failed in the last 5 minutes."
+
+    - alert: HighDiscoveryLatency
+      expr: histogram_quantile(0.95, rate(discovery_scan_duration_seconds_bucket[5m])) > 30
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High discovery scan latency"
+        description: "95th percentile discovery scan time is {{ $value }}s."
+
+    - alert: SystemProbeFailed
+      expr: increase(system_probe_failures_total[5m]) > 3
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "System probe failures"
+        description: "{{ $value }} system probes failed in the last 5 minutes."
+
+    - alert: DataCollectionStalled
+      expr: increase(data_collection_events_total[10m]) < 1
+      for: 15m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Data collection stalled"
+        description: "No data collection events for more than 15 minutes."
+
+    - alert: HighResourceDiscovery
+      expr: discovery_resources_total > 1000
+      for: 10m
+      labels:
+        severity: info
+      annotations:
+        summary: "High resource discovery count"
+        description: "Discovered {{ $value }} resources, which may indicate environment changes."
+
+    - alert: DiscoveryServiceOverloaded
+      expr: rate(discovery_requests_total[5m]) > 100
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Discovery service overloaded"
+        description: "Discovery service handling {{ $value }} requests per second."
+
+  - name: evolution_alerts
+    rules:
+    - alert: EvolutionServiceDown
+      expr: up{job="chimera-evolution-service"} == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Evolution service is down"
+        description: "Evolution service {{ $labels.instance }} has been down for more than 2 minutes."
+        runbook_url: "https://docs.project-chimera.com/runbooks/evolution-down"
+
+    - alert: EvolutionAlgorithmFailed
+      expr: increase(evolution_algorithm_failures_total[5m]) > 0
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Evolution algorithm failed"
+        description: "{{ $value }} evolution algorithms failed in the last 5 minutes."
+
+    - alert: LowPopulationDiversity
+      expr: evolution_population_diversity < 0.3
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Low population diversity"
+        description: "Population diversity dropped below 30% for more than 10 minutes."
+
+    - alert: EvolutionConverged
+      expr: evolution_convergence_ratio > 0.95
+      for: 15m
+      labels:
+        severity: info
+      annotations:
+        summary: "Evolution converged"
+        description: "Evolution algorithm has converged with ratio {{ $value }}."
+
+    - alert: HighEvolutionLatency
+      expr: histogram_quantile(0.95, rate(evolution_generation_duration_seconds_bucket[5m])) > 60
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High evolution generation latency"
+        description: "95th percentile evolution generation time is {{ $value }}s."
+
+    - alert: MetaLearningDegraded
+      expr: evolution_meta_learning_accuracy < 0.7
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Meta-learning accuracy degraded"
+        description: "Meta-learning algorithm selection accuracy below 70%."
+
+    - alert: PopulationMigrationFailed
+      expr: increase(evolution_migration_failures_total[5m]) > 2
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Population migration failures"
+        description: "{{ $value }} population migrations failed in the last 5 minutes."
+
+    - alert: FitnessLandscapeAnalysisFailed
+      expr: increase(evolution_landscape_analysis_failures_total[10m]) > 0
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Fitness landscape analysis failed"
+        description: "Fitness landscape analysis failed in the last 10 minutes."

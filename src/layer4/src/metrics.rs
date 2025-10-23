@@ -30,6 +30,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
 /// Metrics collector configuration
 ///
@@ -806,6 +807,7 @@ fn opts(name: &str, help: &str) -> prometheus::Opts {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
 
     #[test]
     fn test_metrics_collector_creation() {
@@ -817,6 +819,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_kpi_recording() {
+        use uuid::Uuid;
+        use crate::types::*;
+
         let config = MetricsConfig::default();
         let collector = MetricsCollector::new(config).unwrap();
 

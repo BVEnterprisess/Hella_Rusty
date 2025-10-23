@@ -32,16 +32,41 @@ jobs:
       with:
         sarif_file: 'trivy-results.sarif'
 
-  # Rust tests and build
-  test-and-build:
-    name: Test & Build
+  # Multi-layer build and test with metrics
+  multi-layer-build:
+    name: Multi-Layer Build & Test
     runs-on: ubuntu-latest
     needs: security-scan
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: chimera_test
+          POSTGRES_USER: chimera
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
     - uses: actions/checkout@v4
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
 
     - name: Cache Cargo registry
       uses: actions/cache@v3
@@ -52,23 +77,148 @@ jobs:
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client redis-tools
+
+    # Layer 4 Build and Test
+    - name: Build Layer 4 (Execution)
+      working-directory: src/layer4
+      run: |
+        echo "🏗️ Building Layer 4 (Execution)..."
+        start_time=$(date +%s)
+        cargo build --release --verbose
+        end_time=$(date +%s)
+        build_time=$((end_time - start_time))
+        echo "layer4_build_time=${build_time}s" >> $GITHUB_ENV
+        echo "✅ Layer 4 build completed in ${build_time}s"
+
+    - name: Test Layer 4 (Execution)
+      working-directory: src/layer4
+      run: |
+        echo "🧪 Testing Layer 4 (Execution)..."
+        start_time=$(date +%s)
+        cargo test --release --verbose
+        end_time=$(date +%s)
+        test_time=$((end_time - start_time))
+        echo "layer4_test_time=${test_time}s" >> $GITHUB_ENV
+        echo "✅ Layer 4 tests completed in ${test_time}s"
+
+    # Layer 5 Build and Test
+    - name: Build Layer 5 (Refinement)
+      working-directory: src/layer5
+      run: |
+        echo "🏗️ Building Layer 5 (Refinement)..."
+        start_time=$(date +%s)
+        cargo build --release --verbose
+        end_time=$(date +%s)
+        build_time=$((end_time - start_time))
+        echo "layer5_build_time=${build_time}s" >> $GITHUB_ENV
+        echo "✅ Layer 5 build completed in ${build_time}s"
+
+    - name: Test Layer 5 (Refinement)
+      working-directory: src/layer5
+      run: |
+        echo "🧪 Testing Layer 5 (Refinement)..."
+        start_time=$(date +%s)
+        cargo test --release --verbose
+        end_time=$(date +%s)
+        test_time=$((end_time - start_time))
+        echo "layer5_test_time=${test_time}s" >> $GITHUB_ENV
+        echo "✅ Layer 5 tests completed in ${test_time}s"
+
+    # Layer 7 Build and Test
+    - name: Build Layer 7 (Evolution)
+      working-directory: src/layer7
+      run: |
+        echo "🏗️ Building Layer 7 (Evolution)..."
+        start_time=$(date +%s)
+        cargo build --release --verbose
+        end_time=$(date +%s)
+        build_time=$((end_time - start_time))
+        echo "layer7_build_time=${build_time}s" >> $GITHUB_ENV
+        echo "✅ Layer 7 build completed in ${build_time}s"
+
+    - name: Test Layer 7 (Evolution)
+      working-directory: src/layer7
+      run: |
+        echo "🧪 Testing Layer 7 (Evolution)..."
+        start_time=$(date +%s)
+        cargo test --release --verbose
+        end_time=$(date +%s)
+        test_time=$((end_time - start_time))
+        echo "layer7_test_time=${test_time}s" >> $GITHUB_ENV
+        echo "✅ Layer 7 tests completed in ${test_time}s"
+
+    # Code Quality Checks
     - name: Check code formatting
-      run: cargo fmt --all -- --check
+      run: |
+        echo "🎨 Checking code formatting..."
+        cargo fmt --all -- --check
 
     - name: Run clippy
-      run: cargo clippy -- -D warnings
+      run: |
+        echo "🔍 Running clippy lints..."
+        cargo clippy --all-targets --all-features -- -D warnings
 
-    - name: Build project
-      run: cargo build --verbose
+    # Generate Build Report
+    - name: Generate Build Metrics Report
+      run: |
+        echo "📊 Generating comprehensive build metrics report..."
+        cat > build-metrics.json << EOF
+        {
+          "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+          "layers": {
+            "layer4": {
+              "build_time_seconds": "${{ env.layer4_build_time }}",
+              "test_time_seconds": "${{ env.layer4_test_time }}",
+              "status": "success"
+            },
+            "layer5": {
+              "build_time_seconds": "${{ env.layer5_build_time }}",
+              "test_time_seconds": "${{ env.layer5_test_time }}",
+              "status": "success"
+            },
+            "layer7": {
+              "build_time_seconds": "${{ env.layer7_build_time }}",
+              "test_time_seconds": "${{ env.layer7_test_time }}",
+              "status": "success"
+            }
+          },
+          "total_build_time": "$(( ${{ env.layer4_build_time }} + ${{ env.layer5_build_time }} + ${{ env.layer7_build_time }} ))",
+          "total_test_time": "$(( ${{ env.layer4_test_time }} + ${{ env.layer5_test_time }} + ${{ env.layer7_test_time }} ))",
+          "implementation_status": "3/8 layers complete (37.5%)"
+        }
+        EOF
 
-    - name: Run tests
-      run: cargo test --verbose
+    - name: Upload Build Metrics
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-metrics
+        path: build-metrics.json
+
+    - name: Display Build Summary
+      run: |
+        echo "## 🚀 Project Chimera Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Layer Implementation Status" >> $GITHUB_STEP_SUMMARY
+        echo "- **Layer 4 (Execution)**: ✅ Complete - Build: ${{ env.layer4_build_time }}s, Tests: ${{ env.layer4_test_time }}s" >> $GITHUB_STEP_SUMMARY
+        echo "- **Layer 5 (Refinement)**: ✅ Complete - Build: ${{ env.layer5_build_time }}s, Tests: ${{ env.layer5_test_time }}s" >> $GITHUB_STEP_SUMMARY
+        echo "- **Layer 7 (Evolution)**: ✅ Complete - Build: ${{ env.layer7_build_time }}s, Tests: ${{ env.layer7_test_time }}s" >> $GITHUB_STEP_SUMMARY
+        echo "- **Layers 1, 2, 3, 6, 8**: ❌ Pending Implementation" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Build Metrics" >> $GITHUB_STEP_SUMMARY
+        echo "- **Total Build Time**: $(( ${{ env.layer4_build_time }} + ${{ env.layer5_build_time }} + ${{ env.layer7_build_time }} ))s" >> $GITHUB_STEP_SUMMARY
+        echo "- **Total Test Time**: $(( ${{ env.layer4_test_time }} + ${{ env.layer5_test_time }} + ${{ env.layer7_test_time }} ))s" >> $GITHUB_STEP_SUMMARY
+        echo "- **Implementation Progress**: 3/8 layers (37.5%)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Next Priority**: Layer 8 (Resource Management)" >> $GITHUB_STEP_SUMMARY
 
   # Playwright sandbox testing
   sandbox-tests:
     name: Sandbox Tests
     runs-on: ubuntu-latest
-    needs: test-and-build
+    needs: multi-layer-build
     steps:
     - uses: actions/checkout@v4
 
@@ -103,7 +253,7 @@ jobs:
   docker-build:
     name: Docker Build & Push
     runs-on: ubuntu-latest
-    needs: [test-and-build, sandbox-tests]
+    needs: [multi-layer-build, sandbox-tests]
     if: github.ref == 'refs/heads/main'
     steps:
     - uses: actions/checkout@v4

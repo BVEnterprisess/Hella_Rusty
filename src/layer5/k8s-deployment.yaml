@@ -1,0 +1,148 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: layer5-refinement
+  namespace: project-chimera
+  labels:
+    app: layer5
+    component: refinement
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: layer5
+      component: refinement
+  template:
+    metadata:
+      labels:
+        app: layer5
+        component: refinement
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: layer5
+        image: project-chimera/layer5:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 9090
+          name: metrics
+        - containerPort: 8080
+          name: health
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: layer5-secrets
+              key: redis-url
+        - name: LAYER7_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: layer5-config
+              key: layer7-api-url
+        - name: LAYER8_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: layer5-config
+              key: layer8-api-url
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/configs
+        - name: logs-volume
+          mountPath: /app/logs
+      volumes:
+      - name: config-volume
+        configMap:
+          name: layer5-config
+      - name: logs-volume
+        emptyDir: {}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - layer5
+              topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: layer5-service
+  namespace: project-chimera
+  labels:
+    app: layer5
+    component: refinement
+spec:
+  selector:
+    app: layer5
+    component: refinement
+  ports:
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  - name: health
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: layer5-config
+  namespace: project-chimera
+data:
+  layer7-api-url: "http://layer7-service:8080"
+  layer8-api-url: "http://layer8-service:8080"
+  log-level: "info"
+  buffer-size: "1000"
+  batch-timeout-ms: "5000"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: layer5-secrets
+  namespace: project-chimera
+type: Opaque
+data:
+  redis-url: cmVkaXM6Ly9yZWRpcy1zZXJ2aWNlOjYzNzk=  # redis://redis-service:6379 (base64 encoded)

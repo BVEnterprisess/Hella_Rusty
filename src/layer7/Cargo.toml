@@ -1,0 +1,86 @@
+[package]
+name = "chimera-layer7"
+version = "0.1.0"
+edition = "2021"
+description = "Layer 7 Evolution - Agent Genome Evolution and Adaptation Engine"
+authors = ["Project Chimera"]
+
+[dependencies]
+# Core async runtime - LOCKED VERSION
+tokio = { version = "1.35", features = ["full", "tracing"] }
+
+# ML framework - Candle ML for consistency with inference stack
+candle-core = "0.6"
+candle-nn = "0.6"
+candle-datasets = "0.6"
+
+# Serialization - LOCKED VERSIONS
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.0"
+toml = "0.8"
+
+# Error handling - LOCKED VERSIONS
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging and telemetry - LOCKED VERSIONS
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Metrics and monitoring - LOCKED VERSIONS
+prometheus = { version = "0.13", features = ["process"] }
+metrics = "0.23"
+metrics-exporter-prometheus = "0.15"
+
+# Async communication - LOCKED VERSION
+async-channel = "2.0"
+futures = "0.3"
+
+# UUID generation - LOCKED VERSION
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Configuration - LOCKED VERSION
+config = "0.14"
+
+# Redis for event bus - LOCKED VERSION
+redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+
+# Time-series database for evolution tracking
+influxdb = { version = "0.7", features = ["derive"] }
+
+# Time handling - LOCKED VERSION
+chrono = { version = "0.4", features = ["serde"] }
+
+# Statistical analysis for evolution
+statrs = "0.16"
+linfa = "0.7"
+linfa-clustering = "0.7"
+
+# HTTP server for evolution API
+warp = { version = "0.3", features = ["tls"] }
+
+# TLS and security
+rustls = "0.23"
+
+# Numerical computing for genetic algorithms
+ndarray = { version = "0.15", features = ["serde"] }
+ndarray-stats = "0.5"
+
+# Random number generation for evolution
+rand = "0.8"
+rand_distr = "0.4"
+
+# Genetic algorithm specific libraries
+genetic = "0.1"
+
+# Database for genome storage
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "json", "chrono"] }
+
+# Compression for genome storage
+lz4_flex = "0.11"
+
+[dev-dependencies]
+tempfile = "3.0"
+criterion = "0.5"
+proptest = "1.0"

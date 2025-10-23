@@ -1,0 +1,259 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: layer8-resource-management
+  namespace: default
+  labels:
+    layer: resource-management
+    component: layer8
+    version: "1.0.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      layer: resource-management
+      component: layer8
+  template:
+    metadata:
+      labels:
+        layer: resource-management
+        component: layer8
+        version: "1.0.0"
+    spec:
+      containers:
+      - name: layer8-resource-management
+        image: project-chimera/layer8:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8008
+          name: http
+          protocol: TCP
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: LAYER8_PORT
+          value: "8008"
+        - name: POSTGRES_URL
+          valueFrom:
+            secretKeyRef:
+              name: layer8-secrets
+              key: postgres-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: layer8-secrets
+              key: redis-url
+        - name: KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8008
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8008
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/configs
+        - name: logs-volume
+          mountPath: /app/logs
+      volumes:
+      - name: config-volume
+        configMap:
+          name: layer8-config
+      - name: logs-volume
+        emptyDir: {}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: layer
+                  operator: In
+                  values:
+                  - resource-management
+              topologyKey: kubernetes.io/hostname
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: layer8-resource-management
+  namespace: default
+  labels:
+    layer: resource-management
+    component: layer8
+spec:
+  selector:
+    layer: resource-management
+    component: layer8
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8008
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: layer8-config
+  namespace: default
+  labels:
+    layer: resource-management
+    component: layer8
+data:
+  config.yaml: |
+    layer8:
+      port: 8008
+      gpu_limits:
+        max_gpus_per_allocation: 4
+        max_memory_per_gpu_gb: 24
+        max_allocation_time_minutes: 480
+        utilization_threshold: 0.8
+      cost_settings:
+        cost_per_gpu_hour: 0.5
+        budget_limits:
+          layer4: 100.0
+          layer5: 200.0
+          layer7: 150.0
+        optimization_targets:
+          cost_reduction_target: 0.2
+          utilization_target: 0.85
+          efficiency_target: 0.15
+      integration:
+        layer4_endpoints:
+          health_endpoint: "http://layer4-execution:8000/health"
+          resource_endpoint: "http://layer4-execution:8000/api/resources"
+          metrics_endpoint: "http://layer4-execution:8000/metrics"
+        layer5_endpoints:
+          health_endpoint: "http://layer5-refinement:8002/health"
+          resource_endpoint: "http://layer5-refinement:8002/api/resources"
+          metrics_endpoint: "http://layer5-refinement:8002/metrics"
+        layer7_endpoints:
+          health_endpoint: "http://layer7-evolution:8003/health"
+          resource_endpoint: "http://layer7-evolution:8003/api/resources"
+          metrics_endpoint: "http://layer7-evolution:8003/metrics"
+        timeouts:
+          request_timeout_seconds: 30
+          connection_timeout_seconds: 10
+          retry_attempts: 3
+      monitoring:
+        metrics_interval_seconds: 60
+        alert_interval_seconds: 30
+        retention_days: 30
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: layer8-secrets
+  namespace: default
+  labels:
+    layer: resource-management
+    component: layer8
+type: Opaque
+data:
+  # Base64 encoded values - update with actual secrets
+  postgres-url: cG9zdGdyZXM6Ly9jaGltZXJhOmNoYW5nZW1lMTIzQGxvY2FsaG9zdDozNDMyL2NoaW1lcmE=
+  redis-url: cmVkaXM6Ly9sb2NhbGhvc3Q6NjM3OS8x
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: layer8-network-policy
+  namespace: default
+  labels:
+    layer: resource-management
+    component: layer8
+spec:
+  podSelector:
+    matchLabels:
+      layer: resource-management
+      component: layer8
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: default
+    - podSelector:
+        matchLabels:
+          layer: execution
+    - podSelector:
+        matchLabels:
+          layer: refinement
+    - podSelector:
+        matchLabels:
+          layer: evolution
+    ports:
+    - protocol: TCP
+      port: 8008
+    - protocol: TCP
+      port: 9090
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    - podSelector:
+        matchLabels:
+          app: redis
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: TCP
+    - protocol: UDP
+
+---
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: layer8-service-monitor
+  namespace: default
+  labels:
+    layer: resource-management
+    component: layer8
+spec:
+  selector:
+    matchLabels:
+      layer: resource-management
+      component: layer8
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s

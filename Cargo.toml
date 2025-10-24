@@ -1,9 +1,11 @@
 [workspace]
 members = [
+    "src/layer1",
     "src/layer2",
     "src/layer3",
     "src/layer4",
     "src/layer5",
+    "src/layer6",
     "src/layer7",
     "src/layer8",
 ]
@@ -71,6 +73,8 @@ thiserror = "1.0"
 clap = { version = "4.0", features = ["derive"] }
 dotenvy = "0.15"
 once_cell = "1.19"
+rand = "0.8"
+rand_distr = "0.4"
 
 # Async utilities
 async-trait = "0.1"
@@ -80,6 +84,9 @@ async-stream = "0.3"
 # Security
 jsonwebtoken = "9.2"
 argon2 = "0.5"
+
+# Additional utilities
+lazy_static = "1.4"
 
 # File operations
 walkdir = "2.4"

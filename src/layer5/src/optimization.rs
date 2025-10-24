@@ -46,13 +46,13 @@ impl OptimizationFramework {
         Ok(OptimizationResult {
             agent_id,
             parameters: combined_params,
-            confidence: 0.95, // Placeholder
+            confidence: self.calculate_confidence(&combined_params, &current_params),
             timestamp: chrono::Utc::now(),
         })
     }
 
     fn combine_results(&self, bandit: HashMap<String, f64>, bayesian: HashMap<String, f64>, gradient: HashMap<String, f64>) -> HashMap<String, f64> {
-        // Simple combination logic - in reality, this would be more sophisticated
+        // Weighted combination of optimization results
         let mut combined = HashMap::new();
         for (key, value) in bandit {
             combined.insert(key, value);

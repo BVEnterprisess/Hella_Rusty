@@ -76,15 +76,3 @@ panic = "abort"
 opt-level = 0
 debug = true
 overflow-checks = true
-
-[[bench]]
-name = "evolution_benchmarks"
-harness = false
-
-[[bench]]
-name = "meta_learning_benchmarks"
-harness = false
-
-[[bench]]
-name = "population_dynamics_benchmarks"
-harness = false

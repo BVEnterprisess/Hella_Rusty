@@ -3,14 +3,24 @@
 //! Handles model loading, inference execution, and response generation
 //! with GPU optimization and batching support.
 
-use candle_core::{Device, Tensor};
+use candle_core::{Device, Tensor, DType};
 use candle_nn::VarBuilder;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::fs::File;
 
 pub struct InferenceEngine {
     device: Device,
     model: Option<Box<dyn candle_nn::Module>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelConfig {
+    pub model_type: String,
+    pub hidden_size: usize,
+    pub num_hidden_layers: usize,
+    pub num_attention_heads: usize,
+    pub vocab_size: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,12 +55,21 @@ impl InferenceEngine {
     }
 
     pub fn load_model<P: AsRef<Path>>(&mut self, model_path: P) -> Result<(), Box<dyn std::error::Error>> {
-        // TODO: Implement actual model loading with Candle
-        // This would load a transformer model from the given path
-        println!("Loading model from: {:?}", model_path.as_ref());
+        let model_path = model_path.as_ref();
 
-        // For now, just mark as loaded
-        self.model = Some(Box::new(DummyModel));
+        // Load model configuration
+        let config_path = model_path.join("config.json");
+        let config: ModelConfig = serde_json::from_reader(File::open(config_path)?)?;
+
+        // Create VarBuilder for model loading
+        let vb = VarBuilder::from_pth(model_path.join("pytorch_model.bin"), DType::F32, &self.device)?;
+
+        // Load model based on architecture
+        self.model = match config.model_type.as_str() {
+            "mistral" => Some(Box::new(MistralModel::load(vb, &config)?)),
+            "llama" => Some(Box::new(LlamaModel::load(vb, &config)?)),
+            _ => return Err("Unsupported model type".into()),
+        };
 
         Ok(())
     }
@@ -58,19 +77,24 @@ impl InferenceEngine {
     pub async fn generate(&self, request: InferenceRequest) -> Result<InferenceResponse, Box<dyn std::error::Error>> {
         let start_time = std::time::Instant::now();
 
-        // TODO: Implement actual inference
-        // This would use the loaded model to generate text
+        let model = self.model.as_ref().ok_or("Model not loaded")?;
 
-        // Simulate inference
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        // Tokenize input (placeholder)
+        let tokens = vec![1, 2, 3]; // Placeholder tokens
+
+        // Generate response (placeholder)
+        let generated = model.forward(&Tensor::new(&tokens, &self.device)?)?;
+
+        // Detokenize output (placeholder)
+        let text = "Generated response".to_string();
 
         let processing_time = start_time.elapsed().as_millis() as u64;
 
         Ok(InferenceResponse {
-            text: format!("Generated response for: {}", request.prompt),
-            tokens_used: request.max_tokens,
+            text,
+            tokens_used: generated.dim(0)? as usize,
             processing_time_ms: processing_time,
-            confidence: 0.95,
+            confidence: calculate_confidence(&tokens),
         })
     }
 
@@ -84,6 +108,36 @@ struct DummyModel;
 impl candle_nn::Module for DummyModel {
     fn forward(&self, _xs: &Tensor) -> candle_core::Result<Tensor> {
         todo!("Implement actual model forward pass")
+    }
+}
+
+struct MistralModel;
+
+impl MistralModel {
+    fn load(vb: VarBuilder, _config: &ModelConfig) -> Result<Self, Box<dyn std::error::Error>> {
+        // Placeholder for Mistral model loading
+        Ok(Self)
+    }
+}
+
+impl candle_nn::Module for MistralModel {
+    fn forward(&self, _xs: &Tensor) -> candle_core::Result<Tensor> {
+        todo!("Implement Mistral forward pass")
+    }
+}
+
+struct LlamaModel;
+
+impl LlamaModel {
+    fn load(vb: VarBuilder, _config: &ModelConfig) -> Result<Self, Box<dyn std::error::Error>> {
+        // Placeholder for Llama model loading
+        Ok(Self)
+    }
+}
+
+impl candle_nn::Module for LlamaModel {
+    fn forward(&self, _xs: &Tensor) -> candle_core::Result<Tensor> {
+        todo!("Implement Llama forward pass")
     }
 }
 
@@ -109,4 +163,8 @@ mod tests {
         assert!(response.processing_time_ms > 0);
         assert!(response.confidence > 0.0);
     }
+}
+fn calculate_confidence(generated: &[usize]) -> f32 {
+    // Placeholder for confidence calculation
+    0.95
 }

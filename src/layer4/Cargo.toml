@@ -61,6 +61,15 @@ warp = { version = "0.3", features = ["tls"] }
 # TLS and security
 rustls = "0.23"
 
+# Add these for ML:
+candle-core = "0.6"
+candle-nn = "0.6"
+candle-transformers = "0.6"
+hf-hub = "0.3"
+safetensors = "0.4"
+half = "=2.3.1"
+rand = "=0.8.5"
+
 [dev-dependencies]
 tempfile = "3.0"
 criterion = "0.5"

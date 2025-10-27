@@ -59,6 +59,13 @@ pub mod scheduler;
 pub mod metrics;
 pub mod wasm_executor;
 
+/// AI model loading and management types.
+pub mod model_types;
+/// The AI model loader.
+pub mod model_loader;
+/// The AI engine for loading and managing models.
+pub mod ai_engine;
+
 // Re-export commonly used types for convenience
 pub use types::*;
 pub use agent_template::*;

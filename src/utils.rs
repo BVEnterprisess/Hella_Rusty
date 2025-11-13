@@ -3,16 +3,15 @@
 //! Common utilities for configuration, validation, and general operations.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::Path;
 
 pub mod config;
-pub mod validation;
 pub mod metrics;
+pub mod validation;
 
 pub use config::*;
-pub use validation::*;
 pub use metrics::*;
+pub use validation::*;
 
 pub fn generate_id() -> String {
     uuid::Uuid::new_v4().to_string()
@@ -103,7 +102,10 @@ mod tests {
     fn test_format_duration() {
         assert_eq!(format_duration(std::time::Duration::from_secs(5)), "5s");
         assert_eq!(format_duration(std::time::Duration::from_secs(65)), "1m 5s");
-        assert_eq!(format_duration(std::time::Duration::from_secs(3665)), "1h 1m 5s");
+        assert_eq!(
+            format_duration(std::time::Duration::from_secs(3665)),
+            "1h 1m 5s"
+        );
     }
 
     #[test]

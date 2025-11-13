@@ -6,6 +6,7 @@
 use crate::agents::{Agent, AgentManager, AgentType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::SystemTime;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,8 +18,8 @@ pub struct Task {
     pub assigned_agent: Option<String>,
     pub result: Option<serde_json::Value>,
     pub error: Option<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: SystemTime,
+    pub completed_at: Option<SystemTime>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,7 +57,7 @@ impl TaskOrchestrator {
             assigned_agent: None,
             result: None,
             error: None,
-            created_at: chrono::Utc::now(),
+            created_at: SystemTime::now(),
             completed_at: None,
         };
 
@@ -65,7 +66,8 @@ impl TaskOrchestrator {
     }
 
     pub fn get_task_status(&self, task_id: &str) -> Option<&Task> {
-        self.pending_tasks.get(task_id)
+        self.pending_tasks
+            .get(task_id)
             .or_else(|| self.active_tasks.get(task_id))
     }
 
@@ -99,10 +101,26 @@ impl TaskOrchestrator {
 
         // First try to find agents by type
         match task_type {
-            "code_generation" => self.agent_manager.get_agents_by_type(&AgentType::CodeGeneration).first().copied(),
-            "data_analysis" => self.agent_manager.get_agents_by_type(&AgentType::DataAnalysis).first().copied(),
-            "creative" => self.agent_manager.get_agents_by_type(&AgentType::Creative).first().copied(),
-            _ => self.agent_manager.get_agents_by_type(&AgentType::General).first().copied(),
+            "code_generation" => self
+                .agent_manager
+                .get_agents_by_type(&AgentType::CodeGeneration)
+                .first()
+                .copied(),
+            "data_analysis" => self
+                .agent_manager
+                .get_agents_by_type(&AgentType::DataAnalysis)
+                .first()
+                .copied(),
+            "creative" => self
+                .agent_manager
+                .get_agents_by_type(&AgentType::Creative)
+                .first()
+                .copied(),
+            _ => self
+                .agent_manager
+                .get_agents_by_type(&AgentType::General)
+                .first()
+                .copied(),
         }
     }
 
@@ -110,7 +128,7 @@ impl TaskOrchestrator {
         if let Some(task) = self.active_tasks.get_mut(task_id) {
             task.status = TaskStatus::Completed;
             task.result = Some(result);
-            task.completed_at = Some(chrono::Utc::now());
+            task.completed_at = Some(SystemTime::now());
         }
     }
 
@@ -118,7 +136,7 @@ impl TaskOrchestrator {
         if let Some(task) = self.active_tasks.get_mut(task_id) {
             task.status = TaskStatus::Failed;
             task.error = Some(error);
-            task.completed_at = Some(chrono::Utc::now());
+            task.completed_at = Some(SystemTime::now());
         }
     }
 }
@@ -127,6 +145,7 @@ impl TaskOrchestrator {
 mod tests {
     use super::*;
     use crate::agents::{AgentConfig, AgentMetrics};
+    use std::time::SystemTime;
 
     fn create_test_agent(id: &str, agent_type: AgentType) -> Agent {
         Agent {
@@ -145,7 +164,7 @@ mod tests {
                 requests_processed: 0,
                 average_response_time_ms: 0.0,
                 success_rate: 1.0,
-                last_activity: chrono::Utc::now(),
+                last_activity: SystemTime::now(),
             },
         }
     }
@@ -158,7 +177,7 @@ mod tests {
         let mut orchestrator = TaskOrchestrator::new(manager);
         let task_id = orchestrator.submit_task(
             "test_task".to_string(),
-            serde_json::json!({"input": "test"})
+            serde_json::json!({"input": "test"}),
         );
 
         assert!(!task_id.is_empty());

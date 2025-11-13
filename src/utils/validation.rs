@@ -1,8 +1,6 @@
 //! Input validation and sanitization utilities
 
-use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationError {
@@ -55,7 +53,11 @@ impl InputValidator {
         Ok(())
     }
 
-    pub fn validate_json(&self, json_str: &str, field_name: &str) -> Result<serde_json::Value, ValidationError> {
+    pub fn validate_json(
+        &self,
+        json_str: &str,
+        field_name: &str,
+    ) -> Result<serde_json::Value, ValidationError> {
         if json_str.len() > self.max_json_size {
             return Err(ValidationError {
                 field: field_name.to_string(),
@@ -73,23 +75,44 @@ impl InputValidator {
     }
 
     pub fn validate_url(&self, url: &str, field_name: &str) -> Result<(), ValidationError> {
-        match url::Url::parse(url) {
-            Ok(parsed) => {
-                if let Some(domain) = parsed.domain() {
-                    if !self.allowed_domains.contains(&domain.to_string()) {
-                        return Err(ValidationError {
-                            field: field_name.to_string(),
-                            message: format!("Domain {} is not allowed", domain),
-                        });
-                    }
-                }
-                Ok(())
-            }
-            Err(_) => Err(ValidationError {
+        let trimmed = url.trim();
+
+        if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
+            return Err(ValidationError {
                 field: field_name.to_string(),
-                message: "Invalid URL format".to_string(),
-            }),
+                message: "URL must start with http:// or https://".to_string(),
+            });
         }
+
+        let without_scheme = trimmed.split("//").nth(1).unwrap_or("");
+        let domain = without_scheme
+            .split('/')
+            .next()
+            .unwrap_or("")
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        if domain.is_empty() {
+            return Err(ValidationError {
+                field: field_name.to_string(),
+                message: "URL is missing a domain".to_string(),
+            });
+        }
+
+        if !self
+            .allowed_domains
+            .iter()
+            .any(|allowed| allowed.eq_ignore_ascii_case(&domain))
+        {
+            return Err(ValidationError {
+                field: field_name.to_string(),
+                message: format!("Domain {} is not allowed", domain),
+            });
+        }
+
+        Ok(())
     }
 
     pub fn sanitize_filename(&self, filename: &str) -> String {
@@ -101,6 +124,10 @@ impl InputValidator {
             sanitized = sanitized.replace(ch, "_");
         }
 
+        while sanitized.contains("..") {
+            sanitized = sanitized.replace("..", "_");
+        }
+
         // Ensure filename is not too long
         if sanitized.len() > 255 {
             sanitized = sanitized[..255].to_string();
@@ -110,24 +137,25 @@ impl InputValidator {
     }
 
     fn contains_harmful_patterns(&self, text: &str) -> bool {
-        let harmful_patterns = [
-            r"(?i)rm\s+-rf\s+/",
-            r"(?i)format\s+c:",
-            r"(?i)shutdown\s+",
-            r"<script[^>]*>.*?</script>",
-            r"javascript:",
-            r"vbscript:",
-            r"onload\s*=",
-            r"onerror\s*=",
+        let lowercase = text.to_ascii_lowercase();
+        let suspicious_substrings = [
+            "rm -rf /",
+            "format c:",
+            "shutdown ",
+            "javascript:",
+            "vbscript:",
+            "onload=",
+            "onerror=",
         ];
 
-        harmful_patterns.iter().any(|pattern| {
-            if let Ok(regex) = Regex::new(pattern) {
-                regex.is_match(text)
-            } else {
-                false
-            }
-        })
+        if suspicious_substrings
+            .iter()
+            .any(|pattern| lowercase.contains(pattern))
+        {
+            return true;
+        }
+
+        lowercase.contains("<script") && lowercase.contains("</script")
     }
 }
 
@@ -184,10 +212,14 @@ mod tests {
         let validator = InputValidator::new();
 
         // Valid JSON
-        assert!(validator.validate_json(r#"{"key": "value"}"#, "test").is_ok());
+        assert!(validator
+            .validate_json(r#"{"key": "value"}"#, "test")
+            .is_ok());
 
         // Invalid JSON
-        assert!(validator.validate_json(r#"{"key": "value""#, "test").is_err());
+        assert!(validator
+            .validate_json(r#"{"key": "value""#, "test")
+            .is_err());
 
         // JSON too large
         let large_json = format!("{{\"data\": \"{}\"}}", "x".repeat(2_000_000));
@@ -198,9 +230,18 @@ mod tests {
     fn test_filename_sanitization() {
         let validator = InputValidator::new();
 
-        assert_eq!(validator.sanitize_filename("normal_file.txt"), "normal_file.txt");
-        assert_eq!(validator.sanitize_filename("bad/file:name.txt"), "bad_file_name.txt");
-        assert_eq!(validator.sanitize_filename("../../../etc/passwd"), "______etc_passwd");
+        assert_eq!(
+            validator.sanitize_filename("normal_file.txt"),
+            "normal_file.txt"
+        );
+        assert_eq!(
+            validator.sanitize_filename("bad/file:name.txt"),
+            "bad_file_name.txt"
+        );
+        assert_eq!(
+            validator.sanitize_filename("../../../etc/passwd"),
+            "______etc_passwd"
+        );
     }
 
     #[test]

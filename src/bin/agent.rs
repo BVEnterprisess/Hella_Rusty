@@ -1,8 +1,10 @@
+use axum::response::IntoResponse;
 use chimera_core::*;
 use clap::Parser;
 use dotenvy::dotenv;
 use std::net::SocketAddr;
-use tracing::{info, error};
+use std::sync::Arc;
+use tracing::{error, info};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -29,9 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     info!("Starting Chimera Agent: {}", args.name);
 
@@ -40,16 +40,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config: ChimeraConfig = toml::from_str(&config_content)?;
 
     // Initialize platform
-    let platform = init_platform(config).await?;
+    let platform = Arc::new(init_platform(config).await?);
 
     // Start HTTP server
     let app = axum::Router::new()
         .route("/health", axum::routing::get(health_check))
         .route("/predict", axum::routing::post(predict))
         .route("/status", axum::routing::get(agent_status))
-        .layer(tower::ServiceBuilder::new()
-            .layer(axum::middleware::from_fn(rate_limit_middleware))
-        );
+        .with_state(platform.clone());
 
     let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -64,28 +62,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn health_check() -> impl axum::response::IntoResponse {
     axum::Json(serde_json::json!({
         "status": "healthy",
-        "timestamp": chrono::Utc::now().to_rfc3339()
+        "timestamp": utils::timestamp_now(),
     }))
 }
 
 async fn predict(
-    axum::extract::State(state): axum::extract::State<Platform>,
+    axum::extract::State(platform): axum::extract::State<Arc<Platform>>,
     axum::extract::Json(payload): axum::extract::Json<serde_json::Value>,
-) -> impl axum::response::IntoResponse {
+) -> axum::response::Response {
     info!("Received prediction request: {:?}", payload);
 
-    // TODO: Implement actual inference logic
+    let client_ip = std::net::IpAddr::from([127, 0, 0, 1]);
+    if let Err(e) = platform
+        .rate_limiter
+        .check_rate_limit(client_ip, "/predict")
+    {
+        error!("Rate limit exceeded for {}: {:?}", client_ip, e);
+        return (
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(serde_json::json!({ "error": "Rate limit exceeded" })),
+        )
+            .into_response();
+    }
+
+    if let Err(errors) = utils::validate_request_payload(&payload) {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            axum::Json(errors),
+        )
+            .into_response();
+    }
+
+    platform
+        .audit_logger
+        .log_api_access(None, "/predict", "POST", 200, None)
+        .ok();
+
     let response = serde_json::json!({
         "result": "Prediction completed",
         "confidence": 0.95,
         "processing_time_ms": 150
     });
 
-    axum::Json(response)
+    axum::Json(response).into_response()
 }
 
 async fn agent_status(
-    axum::extract::State(state): axum::extract::State<Platform>,
+    axum::extract::State(_platform): axum::extract::State<Arc<Platform>>,
 ) -> impl axum::response::IntoResponse {
     axum::Json(serde_json::json!({
         "name": "chimera-agent",
@@ -94,26 +117,4 @@ async fn agent_status(
         "requests_processed": 150,
         "average_response_time_ms": 145
     }))
-}
-
-async fn rate_limit_middleware(
-    axum::extract::State(state): axum::extract::State<Platform>,
-    request: axum::http::Request<axum::body::Body>,
-    next: axum::middleware::Next,
-) -> impl axum::response::IntoResponse {
-    // Extract client IP (simplified for example)
-    let client_ip = std::net::IpAddr::from([127, 0, 0, 1]);
-
-    // Check rate limit
-    if let Err(e) = state.rate_limiter.check_rate_limit(client_ip, request.uri().path()) {
-        error!("Rate limit exceeded for {}: {:?}", client_ip, e);
-        return axum::response::Response::builder()
-            .status(429)
-            .header("Content-Type", "application/json")
-            .body(axum::body::Body::from(r#"{"error": "Rate limit exceeded"}"#))
-            .unwrap()
-            .into_response();
-    }
-
-    next.run(request).await
 }

@@ -1,26 +1,16 @@
 //! Inference engine for AI model processing
 //!
-//! Handles model loading, inference execution, and response generation
-//! with GPU optimization and batching support.
+//! Provides a lightweight mock inference implementation that keeps
+//! the rest of the platform exercising request/response flows without
+//! requiring heavyweight ML dependencies.
 
-use candle_core::{Device, Tensor, DType};
-use candle_nn::VarBuilder;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::fs::File;
+use std::time::Instant;
 
+#[derive(Debug, Default)]
 pub struct InferenceEngine {
-    device: Device,
-    model: Option<Box<dyn candle_nn::Module>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelConfig {
-    pub model_type: String,
-    pub hidden_size: usize,
-    pub num_hidden_layers: usize,
-    pub num_attention_heads: usize,
-    pub vocab_size: usize,
+    model_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,104 +31,60 @@ pub struct InferenceResponse {
 }
 
 impl InferenceEngine {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let device = if candle_core::utils::cuda_is_available() {
-            Device::new_cuda(0)?
-        } else {
-            Device::Cpu
-        };
-
-        Ok(Self {
-            device,
-            model: None,
-        })
+    pub fn new() -> Self {
+        Self { model_name: None }
     }
 
-    pub fn load_model<P: AsRef<Path>>(&mut self, model_path: P) -> Result<(), Box<dyn std::error::Error>> {
-        let model_path = model_path.as_ref();
+    pub fn load_model<P: AsRef<Path>>(
+        &mut self,
+        model_path: P,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let model_name = model_path
+            .as_ref()
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| model_path.as_ref().to_string_lossy().into_owned());
 
-        // Load model configuration
-        let config_path = model_path.join("config.json");
-        let config: ModelConfig = serde_json::from_reader(File::open(config_path)?)?;
-
-        // Create VarBuilder for model loading
-        let vb = VarBuilder::from_pth(model_path.join("pytorch_model.bin"), DType::F32, &self.device)?;
-
-        // Load model based on architecture
-        self.model = match config.model_type.as_str() {
-            "mistral" => Some(Box::new(MistralModel::load(vb, &config)?)),
-            "llama" => Some(Box::new(LlamaModel::load(vb, &config)?)),
-            _ => return Err("Unsupported model type".into()),
-        };
-
+        self.model_name = Some(model_name);
         Ok(())
     }
 
-    pub async fn generate(&self, request: InferenceRequest) -> Result<InferenceResponse, Box<dyn std::error::Error>> {
-        let start_time = std::time::Instant::now();
+    pub async fn generate(
+        &self,
+        request: InferenceRequest,
+    ) -> Result<InferenceResponse, Box<dyn std::error::Error>> {
+        let model_name = self
+            .model_name
+            .as_ref()
+            .ok_or_else(|| "model not loaded".to_string())?;
 
-        let model = self.model.as_ref().ok_or("Model not loaded")?;
+        let start = Instant::now();
+        let prompt_token_count = request.prompt.split_whitespace().count().max(1);
+        let simulated_output_tokens = request.max_tokens.min(128);
 
-        // Tokenize input (placeholder)
-        let tokens = vec![1, 2, 3]; // Placeholder tokens
+        let response_text = format!(
+            "[{model}] Responding to: {prompt}",
+            model = model_name,
+            prompt = request.prompt
+        );
 
-        // Generate response (placeholder)
-        let generated = model.forward(&Tensor::new(&tokens, &self.device)?)?;
-
-        // Detokenize output (placeholder)
-        let text = "Generated response".to_string();
-
-        let processing_time = start_time.elapsed().as_millis() as u64;
+        let processing_time_ms = start.elapsed().as_millis() as u64;
+        let confidence = estimate_confidence(&request);
 
         Ok(InferenceResponse {
-            text,
-            tokens_used: generated.dim(0)? as usize,
-            processing_time_ms: processing_time,
-            confidence: calculate_confidence(&tokens),
+            text: response_text,
+            tokens_used: prompt_token_count + simulated_output_tokens,
+            processing_time_ms,
+            confidence,
         })
     }
-
-    pub fn get_device(&self) -> &Device {
-        &self.device
-    }
 }
 
-struct DummyModel;
-
-impl candle_nn::Module for DummyModel {
-    fn forward(&self, _xs: &Tensor) -> candle_core::Result<Tensor> {
-        todo!("Implement actual model forward pass")
-    }
-}
-
-struct MistralModel;
-
-impl MistralModel {
-    fn load(vb: VarBuilder, _config: &ModelConfig) -> Result<Self, Box<dyn std::error::Error>> {
-        // Placeholder for Mistral model loading
-        Ok(Self)
-    }
-}
-
-impl candle_nn::Module for MistralModel {
-    fn forward(&self, _xs: &Tensor) -> candle_core::Result<Tensor> {
-        todo!("Implement Mistral forward pass")
-    }
-}
-
-struct LlamaModel;
-
-impl LlamaModel {
-    fn load(vb: VarBuilder, _config: &ModelConfig) -> Result<Self, Box<dyn std::error::Error>> {
-        // Placeholder for Llama model loading
-        Ok(Self)
-    }
-}
-
-impl candle_nn::Module for LlamaModel {
-    fn forward(&self, _xs: &Tensor) -> candle_core::Result<Tensor> {
-        todo!("Implement Llama forward pass")
-    }
+fn estimate_confidence(request: &InferenceRequest) -> f32 {
+    let temperature_component = (1.0 - request.temperature.clamp(0.0, 1.5) / 1.5).max(0.2);
+    let diversity_component = request.top_p.clamp(0.1, 1.0);
+    ((temperature_component + diversity_component) / 2.0).clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
@@ -146,25 +92,22 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_inference_engine() {
-        let mut engine = InferenceEngine::new().unwrap();
+    async fn test_inference_engine_generates_response() {
+        let mut engine = InferenceEngine::new();
+        engine.load_model("models/test-model").unwrap();
 
         let request = InferenceRequest {
             prompt: "Hello, world!".to_string(),
-            max_tokens: 50,
+            max_tokens: 32,
             temperature: 0.7,
             top_p: 0.9,
-            repetition_penalty: 1.1,
+            repetition_penalty: 1.0,
         };
 
         let response = engine.generate(request).await.unwrap();
 
-        assert!(!response.text.is_empty());
-        assert!(response.processing_time_ms > 0);
-        assert!(response.confidence > 0.0);
+        assert!(response.text.contains("Hello, world"));
+        assert!(response.tokens_used > 0);
+        assert!(response.confidence >= 0.0 && response.confidence <= 1.0);
     }
-}
-fn calculate_confidence(generated: &[usize]) -> f32 {
-    // Placeholder for confidence calculation
-    0.95
 }

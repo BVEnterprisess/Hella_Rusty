@@ -1,7 +1,6 @@
 //! Configuration management utilities
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::env;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,26 +82,55 @@ impl AppConfig {
         Self {
             server: ServerConfig {
                 host: env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
-                port: env::var("PORT").unwrap_or_else(|_| "8080".to_string()).parse().unwrap_or(8080),
-                workers: env::var("WORKERS").unwrap_or_else(|_| "4".to_string()).parse().unwrap_or(4),
+                port: env::var("PORT")
+                    .unwrap_or_else(|_| "8080".to_string())
+                    .parse()
+                    .unwrap_or(8080),
+                workers: env::var("WORKERS")
+                    .unwrap_or_else(|_| "4".to_string())
+                    .parse()
+                    .unwrap_or(4),
             },
             database: DatabaseConfig {
-                url: env::var("DATABASE_URL").unwrap_or_else(|_| "postgresql://localhost/chimera".to_string()),
-                max_connections: env::var("DB_MAX_CONNECTIONS").unwrap_or_else(|_| "20".to_string()).parse().unwrap_or(20),
-                timeout_seconds: env::var("DB_TIMEOUT").unwrap_or_else(|_| "30".to_string()).parse().unwrap_or(30),
+                url: env::var("DATABASE_URL")
+                    .unwrap_or_else(|_| "postgresql://localhost/chimera".to_string()),
+                max_connections: env::var("DB_MAX_CONNECTIONS")
+                    .unwrap_or_else(|_| "20".to_string())
+                    .parse()
+                    .unwrap_or(20),
+                timeout_seconds: env::var("DB_TIMEOUT")
+                    .unwrap_or_else(|_| "30".to_string())
+                    .parse()
+                    .unwrap_or(30),
             },
             redis: RedisConfig {
                 url: env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string()),
-                max_connections: env::var("REDIS_MAX_CONNECTIONS").unwrap_or_else(|_| "10".to_string()).parse().unwrap_or(10),
+                max_connections: env::var("REDIS_MAX_CONNECTIONS")
+                    .unwrap_or_else(|_| "10".to_string())
+                    .parse()
+                    .unwrap_or(10),
             },
             ai: AIConfig {
-                model_path: env::var("MODEL_PATH").unwrap_or_else(|_| "./models/default".to_string()),
-                max_tokens: env::var("MAX_TOKENS").unwrap_or_else(|_| "512".to_string()).parse().unwrap_or(512),
-                temperature: env::var("TEMPERATURE").unwrap_or_else(|_| "0.7".to_string()).parse().unwrap_or(0.7),
-                batch_size: env::var("BATCH_SIZE").unwrap_or_else(|_| "1".to_string()).parse().unwrap_or(1),
+                model_path: env::var("MODEL_PATH")
+                    .unwrap_or_else(|_| "./models/default".to_string()),
+                max_tokens: env::var("MAX_TOKENS")
+                    .unwrap_or_else(|_| "512".to_string())
+                    .parse()
+                    .unwrap_or(512),
+                temperature: env::var("TEMPERATURE")
+                    .unwrap_or_else(|_| "0.7".to_string())
+                    .parse()
+                    .unwrap_or(0.7),
+                batch_size: env::var("BATCH_SIZE")
+                    .unwrap_or_else(|_| "1".to_string())
+                    .parse()
+                    .unwrap_or(1),
             },
             monitoring: MonitoringConfig {
-                prometheus_port: env::var("PROMETHEUS_PORT").unwrap_or_else(|_| "9090".to_string()).parse().unwrap_or(9090),
+                prometheus_port: env::var("PROMETHEUS_PORT")
+                    .unwrap_or_else(|_| "9090".to_string())
+                    .parse()
+                    .unwrap_or(9090),
                 log_level: env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
             },
         }

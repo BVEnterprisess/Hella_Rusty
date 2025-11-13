@@ -3,11 +3,13 @@
 //! This module handles the creation, management, and coordination of AI agents
 //! within the Chimera platform.
 
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use uuid::Uuid;
+use std::sync::Arc;
+use std::time::SystemTime;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AgentType {
     General,
     CodeGeneration,
@@ -16,7 +18,7 @@ pub enum AgentType {
     Technical,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AgentStatus {
     Active,
     Busy,
@@ -42,6 +44,25 @@ pub struct AgentConfig {
     pub max_tokens: usize,
     pub temperature: f32,
     pub system_prompt: String,
+    pub agent_name: String,
+    pub max_concurrent_requests: usize,
+    pub capabilities: Vec<String>,
+    pub agent_type: AgentType,
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self {
+            model_path: "models/base".to_string(),
+            max_tokens: 512,
+            temperature: 0.7,
+            system_prompt: "You are a helpful assistant.".to_string(),
+            agent_name: "agent".to_string(),
+            max_concurrent_requests: 4,
+            capabilities: vec!["text_generation".to_string()],
+            agent_type: AgentType::General,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,49 +70,86 @@ pub struct AgentMetrics {
     pub requests_processed: u64,
     pub average_response_time_ms: f64,
     pub success_rate: f32,
-    pub last_activity: chrono::DateTime<chrono::Utc>,
+    pub last_activity: SystemTime,
 }
 
-pub struct AgentManager {
-    agents: HashMap<String, Agent>,
+impl Default for AgentMetrics {
+    fn default() -> Self {
+        Self {
+            requests_processed: 0,
+            average_response_time_ms: 0.0,
+            success_rate: 1.0,
+            last_activity: SystemTime::now(),
+        }
+    }
 }
 
-impl AgentManager {
+#[derive(Clone, Default)]
+pub struct AgentRegistry {
+    agents: Arc<RwLock<HashMap<String, Agent>>>,
+}
+
+impl AgentRegistry {
     pub fn new() -> Self {
         Self {
-            agents: HashMap::new(),
+            agents: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    pub fn register_agent(&mut self, agent: Agent) {
-        self.agents.insert(agent.id.clone(), agent);
+    pub fn from_catalog(catalog: HashMap<String, AgentConfig>) -> Self {
+        let registry = Self::new();
+        for (_name, config) in catalog {
+            registry.register_agent(Agent {
+                id: uuid::Uuid::new_v4().to_string(),
+                name: config.agent_name.clone(),
+                agent_type: config.agent_type.clone(),
+                status: AgentStatus::Idle,
+                capabilities: config.capabilities.clone(),
+                config: config.clone(),
+                metrics: AgentMetrics::default(),
+            });
+        }
+        registry
     }
 
-    pub fn get_agent(&self, id: &str) -> Option<&Agent> {
-        self.agents.get(id)
+    pub fn register_agent(&self, agent: Agent) {
+        let mut agents = self.agents.write();
+        agents.insert(agent.id.clone(), agent);
     }
 
-    pub fn list_agents(&self) -> Vec<&Agent> {
-        self.agents.values().collect()
+    pub fn update_activity(&self, id: &str) {
+        let mut agents = self.agents.write();
+        if let Some(agent) = agents.get_mut(id) {
+            agent.metrics.last_activity = SystemTime::now();
+            agent.metrics.requests_processed += 1;
+        }
     }
 
-    pub fn get_agents_by_type(&self, agent_type: &AgentType) -> Vec<&Agent> {
-        self.agents
+    pub fn get_agent(&self, id: &str) -> Option<Agent> {
+        let agents = self.agents.read();
+        agents.get(id).cloned()
+    }
+
+    pub fn list_agents(&self) -> Vec<Agent> {
+        let agents = self.agents.read();
+        agents.values().cloned().collect()
+    }
+
+    pub fn get_agents_by_type(&self, agent_type: AgentType) -> Vec<Agent> {
+        let agents = self.agents.read();
+        agents
             .values()
-            .filter(|agent| std::mem::discriminant(&agent.agent_type) == std::mem::discriminant(agent_type))
+            .filter(|agent| agent.agent_type == agent_type)
+            .cloned()
             .collect()
-    }
-}
-
-impl Default for AgentManager {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::UNIX_EPOCH;
+    use uuid::Uuid;
 
     #[test]
     fn test_agent_creation() {
@@ -106,13 +164,12 @@ mod tests {
                 max_tokens: 512,
                 temperature: 0.7,
                 system_prompt: "You are a helpful assistant.".to_string(),
+                agent_name: "test_agent".to_string(),
+                max_concurrent_requests: 4,
+                capabilities: vec!["text_generation".to_string()],
+                agent_type: AgentType::General,
             },
-            metrics: AgentMetrics {
-                requests_processed: 0,
-                average_response_time_ms: 0.0,
-                success_rate: 1.0,
-                last_activity: chrono::Utc::now(),
-            },
+            metrics: AgentMetrics::default(),
         };
 
         assert_eq!(agent.name, "test_agent");
@@ -121,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_agent_manager() {
-        let mut manager = AgentManager::new();
+        let manager = AgentRegistry::new();
 
         let agent = Agent {
             id: "test-id".to_string(),
@@ -134,18 +191,26 @@ mod tests {
                 max_tokens: 1024,
                 temperature: 0.3,
                 system_prompt: "You are a code generation assistant.".to_string(),
+                agent_name: "test_agent".to_string(),
+                max_concurrent_requests: 2,
+                capabilities: vec!["code_gen".to_string()],
+                agent_type: AgentType::CodeGeneration,
             },
-            metrics: AgentMetrics {
-                requests_processed: 0,
-                average_response_time_ms: 0.0,
-                success_rate: 1.0,
-                last_activity: chrono::Utc::now(),
-            },
+            metrics: AgentMetrics::default(),
         };
 
         manager.register_agent(agent);
 
         assert_eq!(manager.list_agents().len(), 1);
         assert_eq!(manager.get_agent("test-id").unwrap().name, "test_agent");
+
+        manager.update_activity("test-id");
+        let agent = manager.get_agent("test-id").unwrap();
+        assert!(agent.metrics.requests_processed >= 1);
+        assert!(agent
+            .metrics
+            .last_activity
+            .duration_since(UNIX_EPOCH)
+            .is_ok());
     }
 }

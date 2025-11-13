@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -28,13 +29,20 @@ pub enum AuditSeverity {
     Critical,
 }
 
+#[derive(Clone)]
 pub struct AuditLogger {
     log_file: Arc<Mutex<BufWriter<File>>>,
-    retention_days: u32,
+    _retention_days: u32,
 }
 
 impl AuditLogger {
     pub fn new(log_path: &str, retention_days: u32) -> Result<Self, Box<dyn std::error::Error>> {
+        if let Some(parent) = Path::new(log_path).parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
         let file = OpenOptions::new()
             .create(true)
             .append(true)
@@ -42,16 +50,14 @@ impl AuditLogger {
 
         Ok(Self {
             log_file: Arc::new(Mutex::new(BufWriter::new(file))),
-            retention_days,
+            _retention_days: retention_days,
         })
     }
 
     pub fn log_event(&self, mut event: AuditEvent) -> Result<(), Box<dyn std::error::Error>> {
         // Set timestamp if not already set
         if event.timestamp == 0 {
-            event.timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)?
-                .as_secs();
+            event.timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         }
 
         // Set ID if not already set
@@ -66,17 +72,25 @@ impl AuditLogger {
         writer.flush()?;
 
         // Log to stderr for high severity events
-        match event.severity {
-            AuditSeverity::Critical | AuditSeverity::High => {
-                eprintln!("AUDIT [{}]: {} - {}", event.severity, event.event_type, event.action);
-            }
-            _ => {}
+        if matches!(
+            event.severity,
+            AuditSeverity::Critical | AuditSeverity::High
+        ) {
+            eprintln!(
+                "AUDIT [{:?}]: {} - {}",
+                event.severity, event.event_type, event.action
+            );
         }
 
         Ok(())
     }
 
-    pub fn log_authentication(&self, user_id: &str, success: bool, ip_address: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn log_authentication(
+        &self,
+        user_id: &str,
+        success: bool,
+        ip_address: Option<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let event = AuditEvent {
             id: String::new(),
             timestamp: 0,
@@ -88,13 +102,24 @@ impl AuditLogger {
             ip_address,
             user_agent: None,
             metadata: std::collections::HashMap::new(),
-            severity: if success { AuditSeverity::Low } else { AuditSeverity::Medium },
+            severity: if success {
+                AuditSeverity::Low
+            } else {
+                AuditSeverity::Medium
+            },
         };
 
         self.log_event(event)
     }
 
-    pub fn log_api_access(&self, user_id: Option<String>, endpoint: &str, method: &str, status_code: u16, ip_address: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn log_api_access(
+        &self,
+        user_id: Option<String>,
+        endpoint: &str,
+        method: &str,
+        status_code: u16,
+        ip_address: Option<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let event = AuditEvent {
             id: String::new(),
             timestamp: 0,
@@ -121,7 +146,13 @@ impl AuditLogger {
         self.log_event(event)
     }
 
-    pub fn log_model_access(&self, user_id: Option<String>, model_name: &str, action: &str, ip_address: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn log_model_access(
+        &self,
+        user_id: Option<String>,
+        model_name: &str,
+        action: &str,
+        ip_address: Option<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let event = AuditEvent {
             id: String::new(),
             timestamp: 0,
@@ -139,7 +170,13 @@ impl AuditLogger {
         self.log_event(event)
     }
 
-    pub fn log_admin_action(&self, admin_user_id: &str, action: &str, target: &str, ip_address: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn log_admin_action(
+        &self,
+        admin_user_id: &str,
+        action: &str,
+        target: &str,
+        ip_address: Option<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let event = AuditEvent {
             id: String::new(),
             timestamp: 0,
@@ -156,17 +193,6 @@ impl AuditLogger {
 
         self.log_event(event)
     }
-}
-
-// Global audit logger instance
-lazy_static::lazy_static! {
-    static ref AUDIT_LOGGER: Arc<AuditLogger> = Arc::new(
-        AuditLogger::new("logs/audit.log", 90).expect("Failed to create audit logger")
-    );
-}
-
-pub fn get_audit_logger() -> Arc<AuditLogger> {
-    AUDIT_LOGGER.clone()
 }
 
 #[cfg(test)]

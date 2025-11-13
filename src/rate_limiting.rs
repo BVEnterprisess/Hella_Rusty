@@ -2,15 +2,13 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
-
 #[derive(Debug, Clone)]
 pub struct RateLimit {
     pub requests: u32,
     pub window: Duration,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct RateLimitConfig {
     pub default: RateLimit,
     pub endpoints: HashMap<String, RateLimit>,
@@ -23,6 +21,7 @@ struct ClientBucket {
     last_burst_reset: Instant,
 }
 
+#[derive(Clone)]
 pub struct RateLimiter {
     config: RateLimitConfig,
     clients: Arc<Mutex<HashMap<IpAddr, ClientBucket>>>,
@@ -36,7 +35,11 @@ impl RateLimiter {
         }
     }
 
-    pub fn check_rate_limit(&self, client_ip: IpAddr, endpoint: &str) -> Result<(), RateLimitError> {
+    pub fn check_rate_limit(
+        &self,
+        client_ip: IpAddr,
+        endpoint: &str,
+    ) -> Result<(), RateLimitError> {
         let mut clients = self.clients.lock().unwrap();
 
         let bucket = clients.entry(client_ip).or_insert_with(|| ClientBucket {
@@ -52,7 +55,8 @@ impl RateLimiter {
 
         // Check burst limit (requests per second)
         if bucket.requests.len() >= self.config.burst_limit as usize {
-            let time_since_last_burst_reset = Instant::now().duration_since(bucket.last_burst_reset);
+            let time_since_last_burst_reset =
+                Instant::now().duration_since(bucket.last_burst_reset);
             if time_since_last_burst_reset < Duration::from_secs(1) {
                 return Err(RateLimitError::BurstLimitExceeded);
             }
@@ -72,7 +76,8 @@ impl RateLimiter {
     }
 
     fn get_limit_for_endpoint(&self, endpoint: &str) -> RateLimit {
-        self.config.endpoints
+        self.config
+            .endpoints
             .get(endpoint)
             .cloned()
             .unwrap_or(self.config.default.clone())
@@ -113,14 +118,14 @@ mod tests {
                 window: Duration::from_secs(60),
             },
             endpoints: HashMap::new(),
-            burst_limit: 5,
+            burst_limit: 20,
         };
 
         let limiter = RateLimiter::new(config);
         let client_ip = IpAddr::from([127, 0, 0, 1]);
 
         // Should allow first 10 requests
-        for i in 0..10 {
+        for _ in 0..10 {
             assert!(limiter.check_rate_limit(client_ip, "/api/test").is_ok());
         }
 

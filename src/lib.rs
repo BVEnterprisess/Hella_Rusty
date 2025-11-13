@@ -4,16 +4,15 @@
 //! self-evolving capabilities, and enterprise-grade DevOps infrastructure.
 
 pub mod agents;
+pub mod audit_logging;
 pub mod inference;
 pub mod orchestration;
+pub mod rate_limiting;
 pub mod training;
 pub mod utils;
-pub mod rate_limiting;
-pub mod audit_logging;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use uuid::Uuid;
 
 /// Core configuration for the Chimera platform
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +84,7 @@ pub async fn init_platform(config: ChimeraConfig) -> Result<Platform, Box<dyn st
     })
 }
 
+#[derive(Clone)]
 pub struct Platform {
     pub config: ChimeraConfig,
     pub rate_limiter: rate_limiting::RateLimiter,
@@ -107,9 +107,8 @@ impl Platform {
 
     async fn start_monitoring(&self) -> Result<(), Box<dyn std::error::Error>> {
         // Start Prometheus metrics server
-        let metrics_handle = tokio::spawn(async move {
-            let app = axum::Router::new()
-                .route("/metrics", axum::routing::get(metrics_handler));
+        let _metrics_handle = tokio::spawn(async move {
+            let app = axum::Router::new().route("/metrics", axum::routing::get(metrics_handler));
 
             let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", 9090))
                 .await
@@ -123,7 +122,7 @@ impl Platform {
 
     async fn start_agents(&self) -> Result<(), Box<dyn std::error::Error>> {
         // Initialize and start all configured agents
-        for (name, agent_config) in &self.config.agents {
+        for (name, _agent_config) in &self.config.agents {
             tracing::info!("Starting agent: {}", name);
 
             // Agent initialization logic here
@@ -142,7 +141,8 @@ chimera_agents_active 0
 # HELP chimera_requests_total Total number of requests processed
 # TYPE chimera_requests_total counter
 chimera_requests_total 0
-".to_string()
+"
+    .to_string()
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use uuid::Uuid;
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AgentType {
@@ -49,7 +49,7 @@ pub struct AgentMetrics {
     pub requests_processed: u64,
     pub average_response_time_ms: f64,
     pub success_rate: f32,
-    pub last_activity: chrono::DateTime<chrono::Utc>,
+    pub last_activity: SystemTime,
 }
 
 pub struct AgentManager {
@@ -67,6 +67,13 @@ impl AgentManager {
         self.agents.insert(agent.id.clone(), agent);
     }
 
+    pub fn update_activity(&mut self, id: &str) {
+        if let Some(agent) = self.agents.get_mut(id) {
+            agent.metrics.last_activity = SystemTime::now();
+            agent.metrics.requests_processed += 1;
+        }
+    }
+
     pub fn get_agent(&self, id: &str) -> Option<&Agent> {
         self.agents.get(id)
     }
@@ -78,7 +85,9 @@ impl AgentManager {
     pub fn get_agents_by_type(&self, agent_type: &AgentType) -> Vec<&Agent> {
         self.agents
             .values()
-            .filter(|agent| std::mem::discriminant(&agent.agent_type) == std::mem::discriminant(agent_type))
+            .filter(|agent| {
+                std::mem::discriminant(&agent.agent_type) == std::mem::discriminant(agent_type)
+            })
             .collect()
     }
 }
@@ -92,6 +101,8 @@ impl Default for AgentManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::UNIX_EPOCH;
+    use uuid::Uuid;
 
     #[test]
     fn test_agent_creation() {
@@ -111,7 +122,7 @@ mod tests {
                 requests_processed: 0,
                 average_response_time_ms: 0.0,
                 success_rate: 1.0,
-                last_activity: chrono::Utc::now(),
+                last_activity: SystemTime::now(),
             },
         };
 
@@ -139,7 +150,7 @@ mod tests {
                 requests_processed: 0,
                 average_response_time_ms: 0.0,
                 success_rate: 1.0,
-                last_activity: chrono::Utc::now(),
+                last_activity: SystemTime::now(),
             },
         };
 
@@ -147,5 +158,14 @@ mod tests {
 
         assert_eq!(manager.list_agents().len(), 1);
         assert_eq!(manager.get_agent("test-id").unwrap().name, "test_agent");
+
+        manager.update_activity("test-id");
+        let agent = manager.get_agent("test-id").unwrap();
+        assert!(agent.metrics.requests_processed >= 1);
+        assert!(agent
+            .metrics
+            .last_activity
+            .duration_since(UNIX_EPOCH)
+            .is_ok());
     }
 }

@@ -1,47 +1,41 @@
-//! Model training and fine-tuning capabilities
+//! Simplified model training utilities.
 //!
-//! Handles LoRA/QLoRA training, dataset preparation, and model optimization
-//! for the self-evolving AI agent platform.
+//! The original project described full LoRA training built on top of
+//! Candle.  Maintaining those heavy dependencies without a working
+//! implementation introduced a large amount of dead code and build
+//! failures.  This module keeps a lightweight, testable façade that
+//! exercises the surrounding orchestration while clearly signalling
+//! that the behaviour is simulated.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
+use tokio::time::sleep;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrainingConfig {
     pub base_model: String,
-    pub output_dir: PathBuf,
     pub dataset_path: PathBuf,
+    pub output_dir: PathBuf,
     pub learning_rate: f32,
     pub num_epochs: usize,
     pub batch_size: usize,
     pub save_steps: usize,
-    pub eval_steps: usize,
-    pub max_steps: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoRAConfig {
-    pub rank: usize,
-    pub alpha: usize,
-    pub dropout: f32,
-    pub target_modules: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct TrainingBatch {
-    pub input_ids: Vec<Vec<usize>>,
-    pub attention_mask: Vec<Vec<f32>>,
-    pub labels: Vec<Vec<f32>>,
+pub struct TrainingSummary {
+    pub total_epochs: usize,
+    pub total_steps: usize,
+    pub output_adapter: PathBuf,
+    pub metrics: Vec<EpochMetrics>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TrainingMetrics {
-    pub loss: f32,
-    pub learning_rate: f32,
+pub struct EpochMetrics {
     pub epoch: usize,
-    pub step: usize,
-    pub eval_loss: Option<f32>,
-    pub eval_accuracy: Option<f32>,
+    pub average_loss: f32,
+    pub samples_processed: usize,
 }
 
 pub struct LoRATrainer {
@@ -53,200 +47,101 @@ impl LoRATrainer {
         Self { config }
     }
 
-    pub async fn train(&self) -> Result<TrainingResult, Box<dyn std::error::Error>> {
-        use candle_core::{Device, Tensor, DType};
-        use candle_nn::VarBuilder;
-        use std::fs::File;
+    pub async fn train(&self) -> Result<TrainingSummary, Box<dyn std::error::Error>> {
+        validate_paths(&self.config)?;
 
-        println!("Starting LoRA training with config: {:?}", self.config);
-
-        // Initialize device (GPU if available, otherwise CPU)
-        let device = if candle_core::utils::cuda_is_available() {
-            Device::new_cuda(0)?
-        } else {
-            Device::Cpu
-        };
-
-        // Load base model
-        let model_path = std::path::Path::new(&self.config.base_model);
-        let config_path = model_path.join("config.json");
-
-        if !config_path.exists() {
-            return Err(format!("Model config not found at: {:?}", config_path).into());
-        }
-
-        let config_file = File::open(config_path)?;
-        let model_config: serde_json::Value = serde_json::from_reader(config_file)?;
-
-        // Create VarBuilder for model loading
-        let model_files = std::fs::read_dir(model_path)?
-            .filter_map(|entry| entry.ok())
-            .map(|entry| entry.path())
-            .filter(|path| {
-                let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
-                ext == "bin" || ext == "safetensors" || path.ends_with("pytorch_model.bin")
-            })
-            .collect::<Vec<_>>();
-
-        if model_files.is_empty() {
-            return Err("No model weights found".into());
-        }
-
-        // Load model weights
-        let vb = if let Some(bin_file) = model_files.iter().find(|path| path.ends_with("pytorch_model.bin")) {
-            VarBuilder::from_pth(bin_file, DType::F32, &device)?
-        } else if let Some(safetensors_file) = model_files.iter().find(|path| path.extension().map_or(false, |ext| ext == "safetensors")) {
-            return Err("Safetensors loading not implemented yet - need candle_safetensors".into());
-        } else {
-            return Err("No compatible model weights found".into());
-        };
-
-        // Set up LoRA configuration
-        let lora_config = LoRAConfig {
-            rank: 16,
-            alpha: 32,
-            dropout: 0.1,
-            target_modules: vec!["q_proj", "k_proj", "v_proj", "o_proj".to_string()],
-        };
-
-        // Apply LoRA to model (simplified - would need actual LoRA implementation)
-        println!("Applying LoRA with config: rank={}, alpha={}", lora_config.rank, lora_config.alpha);
-
-        // Load and prepare dataset
-        let dataset = self.prepare_dataset().await?;
-
-        // Training loop
         let mut metrics = Vec::new();
-        let mut total_steps = 0;
+        let mut total_steps = 0usize;
 
         for epoch in 0..self.config.num_epochs {
-            println!("Starting epoch {}/{}", epoch + 1, self.config.num_epochs);
-
-            for (step, batch) in dataset.iter().enumerate() {
-                // Simulate forward pass and loss calculation
-                let loss = self.training_step(batch, &device).await?;
-
-                let metric = TrainingMetrics {
-                    loss,
-                    learning_rate: self.config.learning_rate,
-                    epoch,
-                    step,
-                    eval_loss: if step % self.config.eval_steps == 0 { Some(loss * 0.9) } else { None },
-                    eval_accuracy: if step % self.config.eval_steps == 0 { Some(0.85 + (epoch as f32 * 0.05)) } else { None },
-                };
-                metrics.push(metric);
-
+            let epoch_start = Instant::now();
+            // Simulate a handful of gradient steps.
+            for step in 0..self.config.save_steps.max(1) {
+                sleep(Duration::from_millis(25)).await;
                 total_steps += 1;
 
-                // Periodic checkpointing
-                if step % self.config.save_steps == 0 && step > 0 {
-                    println!("Saving checkpoint at epoch {}, step {}", epoch, step);
-                    self.save_checkpoint(epoch, step, &device).await?;
-                }
-
-                // Progress logging
-                if step % 10 == 0 {
-                    println!("Epoch {}/{}, Step {}/{}, Loss: {:.4}", epoch + 1, self.config.num_epochs, step, dataset.len(), loss);
+                if step > 0 && step % self.config.save_steps == 0 {
+                    save_checkpoint(&self.config.output_dir, epoch, step).await?;
                 }
             }
+
+            let elapsed = epoch_start.elapsed().as_secs_f32();
+            let average_loss = (1.0 / (epoch as f32 + 1.0)).clamp(0.01, 1.0);
+            metrics.push(EpochMetrics {
+                epoch,
+                average_loss,
+                samples_processed: self.config.batch_size * self.config.save_steps.max(1),
+            });
+
+            tracing::info!(
+                "Completed epoch {} in {:.2}s (avg loss {:.3})",
+                epoch + 1,
+                elapsed,
+                average_loss
+            );
         }
 
-        // Save final adapter
-        let adapter_path = self.save_adapter(&device).await?;
+        let output_adapter = self.config.output_dir.join("chimera_adapter.safetensors");
+        tokio::fs::create_dir_all(&self.config.output_dir).await?;
+        tokio::fs::write(&output_adapter, b"simulated adapter").await?;
 
-        let result = TrainingResult {
-            final_loss: metrics.last().map(|m| m.loss).unwrap_or(0.0),
+        Ok(TrainingSummary {
             total_epochs: self.config.num_epochs,
             total_steps,
-            adapter_path,
+            output_adapter,
             metrics,
-        };
-
-        println!("Training completed successfully! Final loss: {:.4}", result.final_loss);
-        Ok(result)
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TrainingResult {
-    pub final_loss: f32,
-    pub total_epochs: usize,
-    pub total_steps: usize,
-    pub adapter_path: PathBuf,
-    pub metrics: Vec<TrainingMetrics>,
-}
-
-pub struct DatasetPreprocessor;
-
-impl DatasetPreprocessor {
-    pub fn prepare_conversation_dataset(input_path: PathBuf, output_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-        // TODO: Implement dataset preprocessing
-        // This would convert raw conversations into training format
-
-        println!("Preprocessing dataset from {:?} to {:?}", input_path, output_path);
-        Ok(())
-    }
-
-    pub fn validate_dataset(path: PathBuf) -> Result<DatasetStats, Box<dyn std::error::Error>> {
-        // TODO: Implement dataset validation
-        // This would check data quality and format
-
-        Ok(DatasetStats {
-            total_samples: 1000,
-            avg_input_length: 150,
-            avg_output_length: 200,
-            format: "jsonl".to_string(),
         })
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DatasetStats {
-    pub total_samples: usize,
-    pub avg_input_length: usize,
-    pub avg_output_length: usize,
-    pub format: String,
+fn validate_paths(config: &TrainingConfig) -> Result<(), Box<dyn std::error::Error>> {
+    if config.base_model.trim().is_empty() {
+        return Err("base model must be provided".into());
+    }
+
+    if config.dataset_path.as_os_str().is_empty() {
+        return Err("dataset path must be provided".into());
+    }
+
+    if config.output_dir.as_os_str().is_empty() {
+        return Err("output directory must be provided".into());
+    }
+
+    Ok(())
+}
+
+async fn save_checkpoint(
+    output_dir: &PathBuf,
+    epoch: usize,
+    step: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let checkpoint_path = output_dir.join(format!("checkpoint_epoch{}_step{}.ckpt", epoch, step));
+    tokio::fs::write(checkpoint_path, b"checkpoint").await?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
 
-    #[test]
-    fn test_training_config() {
+    #[tokio::test]
+    async fn trainer_produces_summary() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = TrainingConfig {
-            base_model: "mistralai/Mistral-7B-Instruct-v0.1".to_string(),
-            output_dir: PathBuf::from("./output"),
-            dataset_path: PathBuf::from("./data/train.jsonl"),
+            base_model: "mistral".into(),
+            dataset_path: temp_dir.path().join("dataset.jsonl"),
+            output_dir: temp_dir.path().join("output"),
             learning_rate: 1e-4,
-            num_epochs: 3,
-            batch_size: 1,
-            save_steps: 500,
-            eval_steps: 100,
-            max_steps: Some(3000),
+            num_epochs: 2,
+            batch_size: 8,
+            save_steps: 4,
         };
 
-        assert_eq!(config.learning_rate, 1e-4);
-        assert_eq!(config.num_epochs, 3);
-    }
+        let trainer = LoRATrainer::new(config.clone());
+        let summary = trainer.train().await.unwrap();
 
-    #[test]
-    fn test_trainer_creation() {
-        let config = TrainingConfig {
-            base_model: "test_model".to_string(),
-            output_dir: PathBuf::from("./test_output"),
-            dataset_path: PathBuf::from("./test_data"),
-            learning_rate: 1e-4,
-            num_epochs: 1,
-            batch_size: 1,
-            save_steps: 10,
-            eval_steps: 5,
-            max_steps: Some(100),
-        };
-
-        let trainer = LoRATrainer::new(config);
-        // Trainer should be created successfully
-        assert!(format!("{:?}", trainer).contains("LoRATrainer"));
+        assert_eq!(summary.total_epochs, config.num_epochs);
+        assert!(!summary.metrics.is_empty());
+        assert!(summary.output_adapter.exists());
     }
 }

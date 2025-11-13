@@ -1,7 +1,7 @@
 use chimera_core::*;
 use clap::Parser;
 use dotenvy::dotenv;
-use tracing::{info, error, warn};
+use tracing::info;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -44,9 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     info!("Starting Chimera Trainer");
     info!("Model: {}", args.model);
@@ -89,7 +87,11 @@ async fn simulate_training(args: &Args) -> Result<(), Box<dyn std::error::Error>
         // Simulate training steps
         for step in 0..100 {
             if step % 20 == 0 {
-                info!("Step {}/100 - Loss: {:.4}", step, 2.5 - (step as f32 * 0.02));
+                info!(
+                    "Step {}/100 - Loss: {:.4}",
+                    step,
+                    2.5 - (step as f32 * 0.02)
+                );
             }
 
             // Save checkpoint periodically

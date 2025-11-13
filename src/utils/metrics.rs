@@ -32,7 +32,10 @@ impl MetricsCollector {
 
     pub fn observe_histogram(&self, name: &str, duration: Duration) {
         let mut histograms = self.histograms.lock().unwrap();
-        histograms.entry(name.to_string()).or_insert_with(Vec::new).push(duration);
+        histograms
+            .entry(name.to_string())
+            .or_insert_with(Vec::new)
+            .push(duration);
     }
 
     pub fn record_request(&self, endpoint: &str, duration: Duration, status_code: u16) {
@@ -40,10 +43,19 @@ impl MetricsCollector {
         self.increment_counter(&format!("requests_total{{endpoint=\"{}\"}}", endpoint), 1);
 
         // Record response time
-        self.observe_histogram(&format!("request_duration_seconds{{endpoint=\"{}\"}}", endpoint), duration);
+        self.observe_histogram(
+            &format!("request_duration_seconds{{endpoint=\"{}\"}}", endpoint),
+            duration,
+        );
 
         // Set status code gauge
-        self.set_gauge(&format!("response_status{{endpoint=\"{}\",code=\"{}\"}}", endpoint, status_code), 1.0);
+        self.set_gauge(
+            &format!(
+                "response_status{{endpoint=\"{}\",code=\"{}\"}}",
+                endpoint, status_code
+            ),
+            1.0,
+        );
     }
 
     pub fn get_counter(&self, name: &str) -> u64 {
@@ -110,13 +122,38 @@ impl MetricsCollector {
                     output.push_str(&format!("{}_sum {}\n", name, sum.as_secs_f64()));
 
                     // Calculate buckets (simplified)
-                    let p50 = self.get_histogram_percentile(name, 0.5).unwrap_or_default();
-                    let p95 = self.get_histogram_percentile(name, 0.95).unwrap_or_default();
-                    let p99 = self.get_histogram_percentile(name, 0.99).unwrap_or_default();
+                    let _p50 = self.get_histogram_percentile(name, 0.5).unwrap_or_default();
+                    let _p95 = self
+                        .get_histogram_percentile(name, 0.95)
+                        .unwrap_or_default();
+                    let _p99 = self
+                        .get_histogram_percentile(name, 0.99)
+                        .unwrap_or_default();
 
-                    output.push_str(&format!("{}_bucket{{le=\"0.1\"}} {}\n", name, values.iter().filter(|&&d| d <= Duration::from_millis(100)).count()));
-                    output.push_str(&format!("{}_bucket{{le=\"0.5\"}} {}\n", name, values.iter().filter(|&&d| d <= Duration::from_millis(500)).count()));
-                    output.push_str(&format!("{}_bucket{{le=\"1.0\"}} {}\n", name, values.iter().filter(|&&d| d <= Duration::from_secs(1)).count()));
+                    output.push_str(&format!(
+                        "{}_bucket{{le=\"0.1\"}} {}\n",
+                        name,
+                        values
+                            .iter()
+                            .filter(|&&d| d <= Duration::from_millis(100))
+                            .count()
+                    ));
+                    output.push_str(&format!(
+                        "{}_bucket{{le=\"0.5\"}} {}\n",
+                        name,
+                        values
+                            .iter()
+                            .filter(|&&d| d <= Duration::from_millis(500))
+                            .count()
+                    ));
+                    output.push_str(&format!(
+                        "{}_bucket{{le=\"1.0\"}} {}\n",
+                        name,
+                        values
+                            .iter()
+                            .filter(|&&d| d <= Duration::from_secs(1))
+                            .count()
+                    ));
                     output.push_str(&format!("{}_bucket{{le=\"+Inf\"}} {}\n", name, count));
                 }
             }
@@ -149,7 +186,8 @@ impl RequestTimer {
 
     pub fn finish(self, status_code: u16) -> Duration {
         let duration = self.start.elapsed();
-        self.collector.record_request(&self.endpoint, duration, status_code);
+        self.collector
+            .record_request(&self.endpoint, duration, status_code);
         duration
     }
 }
@@ -209,6 +247,9 @@ mod tests {
         let duration = timer.finish(200);
 
         assert!(duration.as_millis() >= 10);
-        assert_eq!(collector.get_counter("requests_total{endpoint=\"/api/test\"}"), 1);
+        assert_eq!(
+            collector.get_counter("requests_total{endpoint=\"/api/test\"}"),
+            1
+        );
     }
 }

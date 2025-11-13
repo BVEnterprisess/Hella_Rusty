@@ -1,12 +1,18 @@
 //! Project Chimera - Enterprise AI Agent Platform
 //!
-//! A comprehensive multi-agent AI orchestration platform with GPU optimization,
-//! self-evolving capabilities, and enterprise-grade DevOps infrastructure.
+//! Modernized runtime primitives for orchestrating AI agents with
+//! production-friendly DevOps ergonomics.
 
 pub mod agents;
 pub mod audit_logging;
 pub mod inference;
 pub mod orchestration;
+pub mod platform;
+pub mod rate_limiting;
+pub mod training;
+pub mod utils;
+
+pub use platform::{Platform, PlatformConfig, PlatformContext, PlatformRuntime};
 pub mod rate_limiting;
 pub mod training;
 pub mod utils;
@@ -150,31 +156,11 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_platform_initialization() {
-        let config = ChimeraConfig {
-            agents: HashMap::new(),
-            inference: InferenceConfig {
-                batch_size: 1,
-                max_tokens: 512,
-                temperature: 0.7,
-                top_p: 0.9,
-                repetition_penalty: 1.1,
-            },
-            training: TrainingConfig {
-                base_model: "mistralai/Mistral-7B-Instruct-v0.1".to_string(),
-                output_dir: "./models".to_string(),
-                learning_rate: 1e-4,
-                num_epochs: 3,
-                save_steps: 500,
-            },
-            monitoring: MonitoringConfig {
-                prometheus_port: 9090,
-                jaeger_endpoint: "http://jaeger:14268/api/traces".to_string(),
-                log_level: "info".to_string(),
-            },
-        };
-
-        let platform = init_platform(config).await;
-        assert!(platform.is_ok());
+    async fn platform_bootstraps_with_defaults() {
+        let config = PlatformConfig::default();
+        let platform = Platform::new(config);
+        let runtime = platform.start().await.expect("platform should start");
+        assert_eq!(runtime.context().config().metadata.name, "project-chimera");
+        runtime.shutdown().await.expect("runtime shutdown cleanly");
     }
 }

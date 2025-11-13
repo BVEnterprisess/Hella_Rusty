@@ -3,10 +3,15 @@
 //! Coordinates multiple agents to work together on complex tasks,
 //! manages task dependencies, and handles result aggregation.
 
-use crate::agents::{Agent, AgentManager, AgentType};
+use crate::agents::{Agent, AgentRegistry, AgentType};
+use crate::platform::service::ServiceRegistration;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::SystemTime;
+use tokio::time::Duration;
+use tokio_util::sync::CancellationToken;
+use tracing::info;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,15 +38,15 @@ pub enum TaskStatus {
 }
 
 pub struct TaskOrchestrator {
-    agent_manager: AgentManager,
+    agent_registry: AgentRegistry,
     pending_tasks: HashMap<String, Task>,
     active_tasks: HashMap<String, Task>,
 }
 
 impl TaskOrchestrator {
-    pub fn new(agent_manager: AgentManager) -> Self {
+    pub fn new(agent_registry: AgentRegistry) -> Self {
         Self {
-            agent_manager,
+            agent_registry,
             pending_tasks: HashMap::new(),
             active_tasks: HashMap::new(),
         }
@@ -71,7 +76,25 @@ impl TaskOrchestrator {
             .or_else(|| self.active_tasks.get(task_id))
     }
 
-    pub async fn process_tasks(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(mut self, shutdown: CancellationToken) -> Result<()> {
+        let mut interval = tokio::time::interval(Duration::from_millis(250));
+
+        loop {
+            tokio::select! {
+                _ = shutdown.cancelled() => {
+                    info!("task orchestrator received shutdown signal");
+                    break;
+                }
+                _ = interval.tick() => {
+                    self.process_tasks().await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn process_tasks(&mut self) -> Result<()> {
         // Move pending tasks to active if agents are available
         let mut tasks_to_activate = Vec::new();
 
@@ -89,19 +112,34 @@ impl TaskOrchestrator {
             self.pending_tasks.remove(&task_id);
             self.active_tasks.insert(task_id.clone(), task);
 
-            println!("Assigned task {} to agent {}", task_id, agent_id);
+            info!(task = %task_id, agent = %agent_id, "assigned task to agent");
         }
 
         Ok(())
     }
 
-    fn find_suitable_agent(&self, task_type: &str) -> Option<&Agent> {
-        // Simple agent selection logic
-        // In a real implementation, this would be more sophisticated
-
-        // First try to find agents by type
+    fn find_suitable_agent(&self, task_type: &str) -> Option<Agent> {
         match task_type {
             "code_generation" => self
+                .agent_registry
+                .get_agents_by_type(AgentType::CodeGeneration)
+                .into_iter()
+                .next(),
+            "data_analysis" => self
+                .agent_registry
+                .get_agents_by_type(AgentType::DataAnalysis)
+                .into_iter()
+                .next(),
+            "creative" => self
+                .agent_registry
+                .get_agents_by_type(AgentType::Creative)
+                .into_iter()
+                .next(),
+            _ => self
+                .agent_registry
+                .get_agents_by_type(AgentType::General)
+                .into_iter()
+                .next(),
                 .agent_manager
                 .get_agents_by_type(&AgentType::CodeGeneration)
                 .first()
@@ -141,6 +179,18 @@ impl TaskOrchestrator {
     }
 }
 
+pub fn orchestration_service(registry: AgentRegistry) -> ServiceRegistration {
+    use std::sync::Arc;
+
+    ServiceRegistration::new(
+        "orchestrator",
+        Arc::new(move |_context, token| {
+            let orchestrator = TaskOrchestrator::new(registry.clone());
+            tokio::spawn(async move { orchestrator.run(token).await })
+        }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,6 +198,7 @@ mod tests {
     use std::time::SystemTime;
 
     fn create_test_agent(id: &str, agent_type: AgentType) -> Agent {
+        let config_type = agent_type.clone();
         Agent {
             id: id.to_string(),
             name: format!("agent_{}", id),
@@ -159,7 +210,12 @@ mod tests {
                 max_tokens: 512,
                 temperature: 0.7,
                 system_prompt: "Test prompt".to_string(),
+                agent_name: format!("agent_{}", id),
+                max_concurrent_requests: 4,
+                capabilities: vec!["test".to_string()],
+                agent_type: config_type,
             },
+            metrics: AgentMetrics::default(),
             metrics: AgentMetrics {
                 requests_processed: 0,
                 average_response_time_ms: 0.0,
@@ -171,10 +227,10 @@ mod tests {
 
     #[test]
     fn test_task_submission() {
-        let mut manager = AgentManager::new();
-        manager.register_agent(create_test_agent("1", AgentType::General));
+        let registry = AgentRegistry::new();
+        registry.register_agent(create_test_agent("1", AgentType::General));
 
-        let mut orchestrator = TaskOrchestrator::new(manager);
+        let mut orchestrator = TaskOrchestrator::new(registry);
         let task_id = orchestrator.submit_task(
             "test_task".to_string(),
             serde_json::json!({"input": "test"}),

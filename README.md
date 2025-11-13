@@ -3,15 +3,18 @@
 Project Chimera is a Rust-based playground for building and testing a
 multi-agent orchestration stack.  This repository historically tracked
 an ambitious "eight layer" architecture; the codebase has now been
-streamlined so the core concepts are easy to explore without pulling in
-large model dependencies or unfinished scaffolding.
+streamlined around a production-friendly platform core with explicit
+service lifecycles, typed configuration, and first-class observability.
 
 ## What's Included
 
-- **Agent management** – strongly typed agent definitions and a manager
-  that records basic activity metrics.
-- **Task orchestration** – a lightweight orchestrator that assigns
-  tasks to registered agents and tracks their lifecycle.
+- **Platform runtime** – a `Platform` builder that loads configuration,
+  initialises telemetry, and supervises long-running services via
+  cancellation tokens.
+- **Agent management** – thread-safe registries that hydrate agent
+  definitions from configuration and capture activity metrics.
+- **Task orchestration** – an asynchronous orchestration service that
+  assigns tasks to registered agents and tracks their lifecycle.
 - **Inference façade** – a dependency-free mock inference engine that
   demonstrates request handling without requiring GPU bindings.
 - **Training façade** – an asynchronous simulator that walks through the
@@ -46,6 +49,7 @@ src/
   audit_logging.rs   Structured audit log writer
   inference.rs       Stub inference engine
   lib.rs             Platform entry point used by the binaries
+  platform/          Runtime, config loader, telemetry services
   orchestration.rs   Task orchestration helpers
   rate_limiting.rs   In-memory token bucket
   training.rs        Simulated LoRA trainer
@@ -61,6 +65,8 @@ They remain available but are not required for the streamlined build.
   crates.  Compilation is fast and works with the default Rust toolchain.
 - Validation avoids regular expressions and URL parsers to keep the
   dependency graph shallow.
+- Platform services expose graceful shutdown via `CancellationToken`
+  and should return `anyhow::Result<()>` for predictable teardown.
 - The simulated trainer writes artefacts under the configured output
   directory; run tests in a temporary directory or clean up afterwards.
 

@@ -72,6 +72,10 @@ impl AuditLogger {
         writer.flush()?;
 
         // Log to stderr for high severity events
+        if matches!(
+            event.severity,
+            AuditSeverity::Critical | AuditSeverity::High
+        ) {
         if matches!(event.severity, AuditSeverity::Critical | AuditSeverity::High) {
             eprintln!(
                 "AUDIT [{:?}]: {} - {}",
@@ -190,17 +194,6 @@ impl AuditLogger {
 
         self.log_event(event)
     }
-}
-
-// Global audit logger instance
-lazy_static::lazy_static! {
-    static ref AUDIT_LOGGER: Arc<AuditLogger> = Arc::new(
-        AuditLogger::new("logs/audit.log", 90).expect("Failed to create audit logger")
-    );
-}
-
-pub fn get_audit_logger() -> Arc<AuditLogger> {
-    AUDIT_LOGGER.clone()
 }
 
 #[cfg(test)]

@@ -1,4 +1,9 @@
 use axum::response::IntoResponse;
+use chimera_core::{Platform, PlatformConfig, PlatformContext};
+use clap::Parser;
+use dotenvy::dotenv;
+use std::net::SocketAddr;
+use std::path::PathBuf;
 use chimera_core::*;
 use clap::Parser;
 use dotenvy::dotenv;
@@ -10,8 +15,8 @@ use tracing::{error, info};
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Configuration file path
-    #[arg(short, long, default_value = "configs/chimera.toml")]
-    config: String,
+    #[arg(short, long, default_value = "configs/platform.toml")]
+    config: PathBuf,
 
     /// Port to bind to
     #[arg(short, long, default_value = "8080")]
@@ -23,22 +28,22 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load environment variables
+async fn main() -> anyhow::Result<()> {
     dotenv().ok();
-
-    // Parse command line arguments
     let args = Args::parse();
 
+    info!(agent = %args.name, "starting Chimera agent");
     // Initialize tracing
     tracing_subscriber::fmt().with_env_filter("info").init();
 
     info!("Starting Chimera Agent: {}", args.name);
 
-    // Load configuration
-    let config_content = tokio::fs::read_to_string(&args.config).await?;
-    let config: ChimeraConfig = toml::from_str(&config_content)?;
+    let config = PlatformConfig::load_from_path(Some(args.config.clone()))?;
+    let platform = Platform::new(config);
+    let runtime = platform.start().await?;
+    let context = runtime.context();
 
+    let app = build_router(context.clone());
     // Initialize platform
     let platform = Arc::new(init_platform(config).await?);
 
@@ -52,21 +57,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    info!("Agent {} listening on {}", args.name, addr);
-
+    info!(%addr, "agent listening");
     axum::serve(listener, app).await?;
 
+    runtime.shutdown().await?;
     Ok(())
+}
+
+fn build_router(context: PlatformContext) -> axum::Router {
+    axum::Router::new()
+        .route("/health", axum::routing::get(health_check))
+        .route("/predict", axum::routing::post(predict))
+        .route("/status", axum::routing::get(agent_status))
+        .with_state(context)
 }
 
 async fn health_check() -> impl axum::response::IntoResponse {
     axum::Json(serde_json::json!({
         "status": "healthy",
+        "timestamp": chimera_core::utils::timestamp_now(),
         "timestamp": utils::timestamp_now(),
     }))
 }
 
 async fn predict(
+    axum::extract::State(platform): axum::extract::State<PlatformContext>,
+    axum::extract::Json(payload): axum::extract::Json<serde_json::Value>,
+) -> axum::response::Response {
+    info!("received prediction request: {:?}", payload);
+
+    let client_ip = std::net::IpAddr::from([127, 0, 0, 1]);
+    if let Err(e) = platform
+        .rate_limiter()
+        .check_rate_limit(client_ip, "/predict")
+    {
+        error!("rate limit exceeded for {}: {:?}", client_ip, e);
+        return (
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(serde_json::json!({ "error": "Rate limit exceeded" })),
+        )
+            .into_response();
+    }
+
+    if let Err(errors) = chimera_core::utils::validate_request_payload(&payload) {
+        return (axum::http::StatusCode::BAD_REQUEST, axum::Json(errors)).into_response();
+    }
+
+    if let Err(err) = platform
+        .audit_logger()
+        .log_api_access(None, "/predict", "POST", 200, None)
+    {
+        error!(?err, "failed to record audit log for predict request");
+    }
+
     axum::extract::State(platform): axum::extract::State<Arc<Platform>>,
     axum::extract::Json(payload): axum::extract::Json<serde_json::Value>,
 ) -> axum::response::Response {
@@ -108,6 +151,7 @@ async fn predict(
 }
 
 async fn agent_status(
+    axum::extract::State(_platform): axum::extract::State<PlatformContext>,
     axum::extract::State(_platform): axum::extract::State<Arc<Platform>>,
 ) -> impl axum::response::IntoResponse {
     axum::Json(serde_json::json!({

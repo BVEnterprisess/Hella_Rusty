@@ -1,0 +1,39 @@
+[metadata]
+name = "project-chimera"
+environment = "development"
+cluster = "local"
+
+[observability]
+log_level = "info"
+metrics_port = 9090
+enable_metrics = true
+
+[audit]
+log_path = "logs/audit.log"
+retention_days = 90
+
+[rate_limiting.default]
+requests = 1000
+window_seconds = 60
+burst = 100
+
+[agents.default]
+model_path = "models/base"
+max_tokens = 512
+temperature = 0.7
+system_prompt = "You are a helpful assistant."
+max_concurrent_requests = 4
+
+[inference]
+batch_size = 1
+max_tokens = 512
+temperature = 0.7
+top_p = 0.9
+repetition_penalty = 1.0
+
+[training]
+base_model = "mistralai/Mistral-7B-Instruct-v0.1"
+output_dir = "./models"
+learning_rate = 0.0001
+num_epochs = 3
+save_steps = 500

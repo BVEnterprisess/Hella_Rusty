@@ -49,6 +49,8 @@ async fn main() -> anyhow::Result<()> {
     let platform = Platform::new(config);
     let runtime = platform.start().await?;
     let context = runtime.context();
+    // Initialize tracing
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     info!("Starting Chimera Trainer");
     info!(model = %args.model, dataset = %args.dataset, output = %args.output);

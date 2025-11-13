@@ -115,6 +115,15 @@ impl AgentRegistry {
     pub fn register_agent(&self, agent: Agent) {
         let mut agents = self.agents.write();
         agents.insert(agent.id.clone(), agent);
+    pub fn update_activity(&mut self, id: &str) {
+        if let Some(agent) = self.agents.get_mut(id) {
+            agent.metrics.last_activity = SystemTime::now();
+            agent.metrics.requests_processed += 1;
+        }
+    }
+
+    pub fn get_agent(&self, id: &str) -> Option<&Agent> {
+        self.agents.get(id)
     }
 
     pub fn update_activity(&self, id: &str) {
@@ -128,6 +137,13 @@ impl AgentRegistry {
     pub fn get_agent(&self, id: &str) -> Option<Agent> {
         let agents = self.agents.read();
         agents.get(id).cloned()
+    pub fn get_agents_by_type(&self, agent_type: &AgentType) -> Vec<&Agent> {
+        self.agents
+            .values()
+            .filter(|agent| {
+                std::mem::discriminant(&agent.agent_type) == std::mem::discriminant(agent_type)
+            })
+            .collect()
     }
 
     pub fn list_agents(&self) -> Vec<Agent> {
@@ -170,6 +186,12 @@ mod tests {
                 agent_type: AgentType::General,
             },
             metrics: AgentMetrics::default(),
+            metrics: AgentMetrics {
+                requests_processed: 0,
+                average_response_time_ms: 0.0,
+                success_rate: 1.0,
+                last_activity: SystemTime::now(),
+            },
         };
 
         assert_eq!(agent.name, "test_agent");
@@ -197,6 +219,12 @@ mod tests {
                 agent_type: AgentType::CodeGeneration,
             },
             metrics: AgentMetrics::default(),
+            metrics: AgentMetrics {
+                requests_processed: 0,
+                average_response_time_ms: 0.0,
+                success_rate: 1.0,
+                last_activity: SystemTime::now(),
+            },
         };
 
         manager.register_agent(agent);

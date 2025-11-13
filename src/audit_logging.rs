@@ -76,6 +76,7 @@ impl AuditLogger {
             event.severity,
             AuditSeverity::Critical | AuditSeverity::High
         ) {
+        if matches!(event.severity, AuditSeverity::Critical | AuditSeverity::High) {
             eprintln!(
                 "AUDIT [{:?}]: {} - {}",
                 event.severity, event.event_type, event.action

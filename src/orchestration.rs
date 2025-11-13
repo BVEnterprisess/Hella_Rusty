@@ -140,6 +140,25 @@ impl TaskOrchestrator {
                 .get_agents_by_type(AgentType::General)
                 .into_iter()
                 .next(),
+                .agent_manager
+                .get_agents_by_type(&AgentType::CodeGeneration)
+                .first()
+                .copied(),
+            "data_analysis" => self
+                .agent_manager
+                .get_agents_by_type(&AgentType::DataAnalysis)
+                .first()
+                .copied(),
+            "creative" => self
+                .agent_manager
+                .get_agents_by_type(&AgentType::Creative)
+                .first()
+                .copied(),
+            _ => self
+                .agent_manager
+                .get_agents_by_type(&AgentType::General)
+                .first()
+                .copied(),
         }
     }
 
@@ -176,6 +195,7 @@ pub fn orchestration_service(registry: AgentRegistry) -> ServiceRegistration {
 mod tests {
     use super::*;
     use crate::agents::{AgentConfig, AgentMetrics};
+    use std::time::SystemTime;
 
     fn create_test_agent(id: &str, agent_type: AgentType) -> Agent {
         let config_type = agent_type.clone();
@@ -196,6 +216,12 @@ mod tests {
                 agent_type: config_type,
             },
             metrics: AgentMetrics::default(),
+            metrics: AgentMetrics {
+                requests_processed: 0,
+                average_response_time_ms: 0.0,
+                success_rate: 1.0,
+                last_activity: SystemTime::now(),
+            },
         }
     }
 
